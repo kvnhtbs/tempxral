@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tempxral — el contenido se desvanece, nunca se borra</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<div class="txp-header">
+  <div>
+    <p class="txp-logo">Temp<span class="x">x</span>ral</p>
+    <p class="txp-tag">el contenido se desvanece &mdash; nunca se borra</p>
+  </div>
+  <div class="txp-auth" id="txp-auth-area"></div>
+</div>
+
+<div class="txp-banner" id="txp-banner" style="display:none;">
+  <span>Estás navegando como visitante. Puedes ver todo, pero necesitas una cuenta para subir, votar, ampliar tiempo o reportar.</span>
+  <button class="txp-btn primary" id="txp-banner-register">Registrarme</button>
+</div>
+
+<div class="txp-upload">
+  <p>Sube una imagen. No podrás eliminarla después: cuando el tiempo llegue a cero dejará de mostrarse en la cuadrícula, pero seguirá existiendo en el servidor.</p>
+  <div>
+    <input type="file" id="txp-file-input" accept="image/*" style="display:none;">
+    <button class="txp-btn primary" id="txp-upload-btn">Subir imagen</button>
+  </div>
+</div>
+
+<div class="txp-demo-row" id="txp-status-row"></div>
+
+<div id="txp-grid-area">
+  <div class="txp-loading">Cargando contenido&hellip;</div>
+</div>
+
+<div class="txp-overlay" id="txp-overlay">
+  <div class="txp-modal">
+    <button class="txp-modal-close" id="txp-modal-close">&times;</button>
+    <h3 id="txp-modal-title">Regístrate</h3>
+    <p class="sub" id="txp-modal-sub">Necesario para interactuar con Tempxral</p>
+    <div class="txp-field">
+      <label for="txp-username">Usuario</label>
+      <input id="txp-username" type="text" autocomplete="username" maxlength="20">
+    </div>
+    <div class="txp-field">
+      <label for="txp-password">Contraseña</label>
+      <input id="txp-password" type="password" autocomplete="current-password">
+    </div>
+    <div class="txp-modal-err" id="txp-modal-err"></div>
+    <div class="txp-modal-actions">
+      <button class="txp-switch" id="txp-modal-switch">¿No tienes cuenta? Regístrate</button>
+      <button class="txp-btn primary" id="txp-modal-submit">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="txp-toast" id="txp-toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
