@@ -8,6 +8,7 @@ services:
     name: tempxral
     runtime: node
     plan: starter                 # el plan gratuito no admite disco persistente; este es el más barato que sí
+    rootDir: tempxral-app
     buildCommand: npm install
     startCommand: npm run start:prod   # aplica el esquema de base de datos y luego arranca, automático en cada despliegue
     healthCheckPath: /api/health
