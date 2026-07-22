@@ -1,21 +1,23 @@
 # Blueprint de Render: define TODO lo que hace falta (servidor web, base de datos,
-# disco para las imágenes, variables de entorno) en un solo archivo.
+# variables de entorno) en un solo archivo.
 # Con esto, desplegar es: conectar el repo en Render → "Apply" → esperar.
 # No hace falta escribir variables de entorno a mano ni ejecutar comandos.
+#
+# Esta es la versión GRATUITA (sin coste): sin disco persistente, así que las
+# imágenes desaparecen cada vez que Render reinicie el servicio, y la base de
+# datos gratuita se borra sola a los 30 días. Bien para probarlo; cuando quieras
+# hacerlo permanente, dímelo y volvemos a la versión de pago (~13-14€/mes) sin
+# perder lo que ya tengas.
 
 services:
   - type: web
     name: tempxral
     runtime: node
     rootDir: tempxral-app          # el código vive en esta subcarpeta del repositorio
-    plan: starter                 # el plan gratuito no admite disco persistente; este es el más barato que sí
+    plan: free
     buildCommand: npm install
     startCommand: npm run start:prod   # aplica el esquema de base de datos y luego arranca, automático en cada despliegue
     healthCheckPath: /api/health
-    disk:
-      name: tempxral-uploads
-      mountPath: /data/uploads
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -27,11 +29,9 @@ services:
         generateValue: true       # Render genera un valor aleatorio seguro solo, no hay que escribir nada
       - key: NODE_ENV
         value: production
-      - key: UPLOADS_DIR
-        value: /data/uploads
 
 databases:
   - name: tempxral-db
     databaseName: tempxral
     user: tempxral
-    plan: basic-256mb             # el plan de pago más pequeño; el gratuito borra la base de datos a los 30 días
+    plan: free
