@@ -8,9 +8,11 @@ const { resizeAndSave } = require('../resizeImage');
 
 const router = express.Router();
 
-const DEFAULT_LIFESPAN_HOURS = 48;
-const EXTEND_HOURS = 24;
+const DEFAULT_LIFESPAN_HOURS = 24;
+const ALLOWED_DURATIONS_HOURS = [12, 24, 48];
+const EXTEND_HOURS = 6;
 const REPORT_THRESHOLD = 3;
+const PAGE_SIZE = 24;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads');
 
 const upload = multer({
@@ -27,20 +29,23 @@ const upload = multer({
 const reportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 const voteLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
 
-const LIST_QUERY = `
-  SELECT
-    c.id, c.author_username, c.title, c.file_path, c.created_at, c.expires_at,
-    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
-    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
-    COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
-    (SELECT v.value FROM votes v WHERE v.item_id = c.id AND v.user_id = $1) AS my_vote,
-    EXISTS(SELECT 1 FROM extensions e WHERE e.item_id = c.id AND e.user_id = $1 AND e.extended_on = CURRENT_DATE) AS extended_today,
-    EXISTS(SELECT 1 FROM reports r WHERE r.item_id = c.id AND r.user_id = $1) AS reported_by_me
-  FROM content_items c
-  WHERE c.hidden_reason IS NULL AND c.expires_at > now()
-  ORDER BY c.created_at DESC
-  LIMIT 200
-`;
+function listQuery(hasCursor) {
+  return `
+    SELECT
+      c.id, c.author_username, c.title, c.file_path, c.created_at, c.expires_at,
+      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
+      COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
+      COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
+      (SELECT v.value FROM votes v WHERE v.item_id = c.id AND v.user_id = $1) AS my_vote,
+      EXISTS(SELECT 1 FROM extensions e WHERE e.item_id = c.id AND e.user_id = $1 AND e.extended_on = CURRENT_DATE) AS extended_today,
+      EXISTS(SELECT 1 FROM reports r WHERE r.item_id = c.id AND r.user_id = $1) AS reported_by_me
+    FROM content_items c
+    WHERE c.hidden_reason IS NULL AND c.expires_at > now()
+    ${hasCursor ? 'AND c.created_at < $2' : ''}
+    ORDER BY c.created_at DESC
+    LIMIT ${hasCursor ? '$3' : '$2'}
+  `;
+}
 
 function shapeRow(row) {
   return {
@@ -63,8 +68,20 @@ function shapeRow(row) {
 router.get('/', optionalAuth, async (req, res) => {
   try {
     const userId = req.user ? req.user.id : null;
-    const result = await pool.query(LIST_QUERY, [userId]);
-    res.json({ items: result.rows.map(shapeRow) });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || PAGE_SIZE, 1), 60);
+    const before = req.query.before && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
+
+    const result = before
+      ? await pool.query(listQuery(true), [userId, before, limit + 1])
+      : await pool.query(listQuery(false), [userId, limit + 1]);
+
+    const hasMore = result.rows.length > limit;
+    const rows = result.rows.slice(0, limit);
+    res.json({
+      items: rows.map(shapeRow),
+      hasMore,
+      nextCursor: rows.length ? rows[rows.length - 1].created_at : null
+    });
   } catch (err) {
     console.error('Error en GET /items:', err);
     res.status(500).json({ error: 'server_error', message: 'No se pudo cargar la cuadrícula.' });
@@ -145,7 +162,9 @@ router.post('/', requireAuth, (req, res) => {
     }
     try {
       const filename = await resizeAndSave(req.file.buffer, UPLOADS_DIR);
-      const expiresAt = new Date(Date.now() + DEFAULT_LIFESPAN_HOURS * 3600 * 1000);
+      const requestedHours = parseInt(req.body && req.body.durationHours, 10);
+      const lifespanHours = ALLOWED_DURATIONS_HOURS.includes(requestedHours) ? requestedHours : DEFAULT_LIFESPAN_HOURS;
+      const expiresAt = new Date(Date.now() + lifespanHours * 3600 * 1000);
       const rawTitle = (req.body && req.body.title || '').trim().slice(0, 120);
       const title = rawTitle.length > 0 ? rawTitle : null;
       const result = await pool.query(

@@ -1,7 +1,7 @@
 (function () {
   const EXTEND_HOURS = 24;
 
-  const state = { currentUser: null, items: [], mode: 'login' };
+  const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1 };
 
   const $ = (sel) => document.querySelector(sel);
   const authArea = $('#txp-auth-area');
@@ -21,6 +21,7 @@
   const lightboxBody = $('#txp-lightbox-body');
   const accountOverlay = $('#txp-account-overlay');
   const accountBody = $('#txp-account-body');
+  const loadMoreBtn = $('#txp-load-more-btn');
 
   function toast(msg) {
     toastEl.textContent = msg;
@@ -127,13 +128,15 @@
       toast('Subiendo imagen…');
       try {
         const titleInput = $('#txp-title-input');
+        const durationSelect = $('#txp-duration-select');
         const form = new FormData();
         form.append('file', file);
         form.append('title', (titleInput.value || '').trim().slice(0, 120));
+        form.append('durationHours', durationSelect.value);
         const item = await api('/api/items', { method: 'POST', body: form });
         state.items.unshift(item);
         titleInput.value = '';
-        toast('Imagen publicada. Estará visible 48h.');
+        toast('Imagen publicada. Estará visible ' + durationSelect.value + 'h... para empezar.');
         render();
       } catch (e) {
         toast(e.message || 'No se pudo subir la imagen.');
@@ -219,6 +222,9 @@
           </div>`).join('');
 
     lightboxBody.innerHTML = `
+      <div class="txp-lightbox-toprow">
+        <a class="txp-download-btn" href="${item.imageUrl}" download="tempxral-${item.id}.jpg">⬇ Descargar</a>
+      </div>
       <img class="txp-lightbox-img" src="${item.imageUrl}" alt="${escapeHtml(item.title || 'Contenido de ' + item.author)}">
       <div class="txp-lightbox-info">
         ${item.title ? `<h3 class="txp-lightbox-title">${escapeHtml(item.title)}</h3>` : ''}
@@ -477,18 +483,44 @@
   function render() {
     renderAuth();
     renderGrid();
-    statusRow.textContent = state.items.length + ' publicación(es) activas';
+    statusRow.textContent = state.items.length + ' publicación(es) mostradas';
+    loadMoreBtn.style.display = state.hasMore ? 'inline-block' : 'none';
+    loadMoreBtn.textContent = 'Cargar más';
+    loadMoreBtn.disabled = false;
   }
 
   async function refreshItems() {
+    if (state.pagesLoaded > 1) return; // no interrumpir si el usuario ya cargó más páginas
     try {
       const data = await api('/api/items');
       state.items = data.items;
+      state.nextCursor = data.nextCursor;
+      state.hasMore = data.hasMore;
       render();
     } catch (e) {
       statusRow.textContent = 'No se pudo conectar con el servidor. Reintentando…';
     }
   }
+
+  async function loadMore() {
+    if (state.loadingMore || !state.hasMore || !state.nextCursor) return;
+    state.loadingMore = true;
+    loadMoreBtn.textContent = 'Cargando…';
+    loadMoreBtn.disabled = true;
+    try {
+      const data = await api('/api/items?before=' + encodeURIComponent(state.nextCursor));
+      state.items = state.items.concat(data.items);
+      state.nextCursor = data.nextCursor;
+      state.hasMore = data.hasMore;
+      state.pagesLoaded += 1;
+      render();
+    } catch (e) {
+      toast(e.message || 'No se pudo cargar más contenido.');
+    } finally {
+      state.loadingMore = false;
+    }
+  }
+  loadMoreBtn.addEventListener('click', loadMore);
 
   async function init() {
     try {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tempxral — el contenido se desvanece, nunca se borra</title>
+<title>Tempxral</title>
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
 <div class="txp-header">
   <div>
     <p class="txp-logo">Temp<span class="x">x</span>ral</p>
-    <p class="txp-tag">el contenido se desvanece &mdash; nunca se borra</p>
+    <p class="txp-tag">algunas cosas se quedan. otras, no tanto.</p>
   </div>
   <div class="txp-auth" id="txp-auth-area"></div>
 </div>
@@ -22,9 +22,14 @@
 </div>
 
 <div class="txp-upload">
-  <p>Sube una imagen. No podrás eliminarla después: cuando el tiempo llegue a cero dejará de mostrarse en la cuadrícula, pero seguirá existiendo en el servidor.</p>
+  <p>Sube una imagen. Cuánto tiempo aguante en la cuadrícula... ya no depende solo de ti.</p>
   <div>
     <input type="text" id="txp-title-input" placeholder="Título (opcional)" maxlength="120">
+    <select id="txp-duration-select" title="Cuánto tiempo estará visible al principio">
+      <option value="12">12h</option>
+      <option value="24" selected>24h</option>
+      <option value="48">48h</option>
+    </select>
     <input type="file" id="txp-file-input" accept="image/*" style="display:none;">
     <button class="txp-btn primary" id="txp-upload-btn">Subir imagen</button>
   </div>
@@ -34,6 +39,10 @@
 
 <div id="txp-grid-area">
   <div class="txp-loading">Cargando contenido&hellip;</div>
+</div>
+
+<div class="txp-load-more-row">
+  <button class="txp-btn" id="txp-load-more-btn" style="display:none;">Cargar más</button>
 </div>
 
 <div class="txp-overlay" id="txp-lightbox-overlay">
@@ -74,11 +83,11 @@
     <div class="txp-field txp-checkbox-field" id="txp-register-checks" style="display:none;">
       <label class="txp-checkbox-label">
         <input type="checkbox" id="txp-check-age">
-        Confirmo que tengo 16 años o más
+        <span>Tengo 16 años o más</span>
       </label>
       <label class="txp-checkbox-label">
         <input type="checkbox" id="txp-check-terms">
-        He leído y acepto los <a href="/legal.html#terminos" target="_blank">Términos</a> y la <a href="/legal.html#privacidad" target="_blank">Política de Privacidad</a>
+        <span>Acepto los <a href="/legal.html#terminos" target="_blank">Términos</a> y la <a href="/legal.html#privacidad" target="_blank">Privacidad</a></span>
       </label>
     </div>
     <div class="txp-modal-err" id="txp-modal-err"></div>
