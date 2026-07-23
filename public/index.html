@@ -24,13 +24,6 @@
 <div class="txp-upload">
   <p>Sube una imagen. Cuánto tiempo aguante en la cuadrícula... ya no depende solo de ti.</p>
   <div>
-    <input type="text" id="txp-title-input" placeholder="Título (opcional)" maxlength="120">
-    <select id="txp-duration-select" title="Cuánto tiempo estará visible al principio">
-      <option value="12">12h</option>
-      <option value="24" selected>24h</option>
-      <option value="48">48h</option>
-    </select>
-    <input type="file" id="txp-file-input" accept="image/*" style="display:none;">
     <button class="txp-btn primary" id="txp-upload-btn">Subir imagen</button>
   </div>
 </div>
@@ -43,6 +36,37 @@
 
 <div class="txp-load-more-row">
   <button class="txp-btn" id="txp-load-more-btn" style="display:none;">Cargar más</button>
+</div>
+
+<div class="txp-overlay" id="txp-upload-overlay">
+  <div class="txp-upload-modal">
+    <button class="txp-modal-close" id="txp-upload-modal-close">&times;</button>
+    <h3>Subir imagen</h3>
+    <p class="sub">No podrás eliminarla después de publicarla.</p>
+
+    <div class="txp-field">
+      <label for="txp-file-input">Imagen</label>
+      <input type="file" id="txp-file-input" accept="image/*">
+    </div>
+    <div class="txp-field">
+      <label for="txp-title-input">Título (opcional)</label>
+      <input type="text" id="txp-title-input" placeholder="Un título breve" maxlength="120">
+    </div>
+    <div class="txp-field">
+      <label for="txp-caption-input">Pie de foto (opcional)</label>
+      <textarea id="txp-caption-input" placeholder="Da contexto a tu publicación, si quieres" maxlength="500" rows="3"></textarea>
+    </div>
+    <div class="txp-field">
+      <label for="txp-duration-select">Tiempo inicial en la cuadrícula</label>
+      <select id="txp-duration-select">
+        <option value="12">12 horas</option>
+        <option value="24" selected>24 horas</option>
+        <option value="48">48 horas</option>
+      </select>
+    </div>
+    <div class="txp-modal-err" id="txp-upload-err"></div>
+    <button class="txp-btn primary" id="txp-upload-submit-btn" style="width:100%;">Publicar</button>
+  </div>
 </div>
 
 <div class="txp-overlay" id="txp-lightbox-overlay">

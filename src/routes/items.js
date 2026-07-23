@@ -1,16 +1,17 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../auth');
 const { resizeAndSave } = require('../resizeImage');
+const { checkImage } = require('../moderation');
 
 const router = express.Router();
 
 const DEFAULT_LIFESPAN_HOURS = 24;
 const ALLOWED_DURATIONS_HOURS = [12, 24, 48];
-const EXTEND_HOURS = 6;
 const REPORT_THRESHOLD = 3;
 const PAGE_SIZE = 24;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads');
@@ -28,11 +29,12 @@ const upload = multer({
 
 const reportLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 const voteLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
+const commentLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
 
 function listQuery(hasCursor) {
   return `
     SELECT
-      c.id, c.author_username, c.title, c.file_path, c.created_at, c.expires_at,
+      c.id, c.author_username, c.title, c.caption, c.duration_hours, c.file_path, c.created_at, c.expires_at,
       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
       COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
       COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
@@ -47,11 +49,27 @@ function listQuery(hasCursor) {
   `;
 }
 
+const DETAIL_QUERY = `
+  SELECT
+    c.id, c.author_username, c.title, c.caption, c.duration_hours, c.file_path, c.created_at, c.expires_at,
+    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
+    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
+    COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
+    (SELECT v.value FROM votes v WHERE v.item_id = c.id AND v.user_id = $1) AS my_vote,
+    EXISTS(SELECT 1 FROM extensions e WHERE e.item_id = c.id AND e.user_id = $1 AND e.extended_on = CURRENT_DATE) AS extended_today,
+    EXISTS(SELECT 1 FROM reports r WHERE r.item_id = c.id AND r.user_id = $1) AS reported_by_me
+  FROM content_items c
+  WHERE c.id = $2 AND c.hidden_reason IS NULL AND c.expires_at > now()
+  LIMIT 1
+`;
+
 function shapeRow(row) {
   return {
     id: row.id,
     author: row.author_username,
     title: row.title || null,
+    caption: row.caption || null,
+    durationHours: row.duration_hours,
     imageUrl: '/uploads/' + row.file_path,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
@@ -87,22 +105,6 @@ router.get('/', optionalAuth, async (req, res) => {
     res.status(500).json({ error: 'server_error', message: 'No se pudo cargar la cuadrícula.' });
   }
 });
-
-const commentLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
-
-const DETAIL_QUERY = `
-  SELECT
-    c.id, c.author_username, c.title, c.file_path, c.created_at, c.expires_at,
-    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
-    COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
-    COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
-    (SELECT v.value FROM votes v WHERE v.item_id = c.id AND v.user_id = $1) AS my_vote,
-    EXISTS(SELECT 1 FROM extensions e WHERE e.item_id = c.id AND e.user_id = $1 AND e.extended_on = CURRENT_DATE) AS extended_today,
-    EXISTS(SELECT 1 FROM reports r WHERE r.item_id = c.id AND r.user_id = $1) AS reported_by_me
-  FROM content_items c
-  WHERE c.id = $2 AND c.hidden_reason IS NULL AND c.expires_at > now()
-  LIMIT 1
-`;
 
 router.get('/:id', optionalAuth, async (req, res) => {
   const { id } = req.params;
@@ -160,23 +162,39 @@ router.post('/', requireAuth, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'missing_file', message: 'Falta el archivo de imagen.' });
     }
+    let savedPath = null;
     try {
       const filename = await resizeAndSave(req.file.buffer, UPLOADS_DIR);
+      savedPath = path.join(UPLOADS_DIR, filename);
+
+      // Moderación automática, sin cola manual: se comprueba al instante y se
+      // acepta o rechaza en la misma respuesta. Ver src/moderation.js.
+      const savedBuffer = fs.readFileSync(savedPath);
+      const modResult = await checkImage(savedBuffer);
+      if (!modResult.allowed) {
+        fs.unlinkSync(savedPath);
+        return res.status(422).json({ error: 'content_rejected', message: 'Esta imagen no se puede publicar (' + modResult.reason + ').' });
+      }
+
       const requestedHours = parseInt(req.body && req.body.durationHours, 10);
       const lifespanHours = ALLOWED_DURATIONS_HOURS.includes(requestedHours) ? requestedHours : DEFAULT_LIFESPAN_HOURS;
       const expiresAt = new Date(Date.now() + lifespanHours * 3600 * 1000);
       const rawTitle = (req.body && req.body.title || '').trim().slice(0, 120);
       const title = rawTitle.length > 0 ? rawTitle : null;
+      const rawCaption = (req.body && req.body.caption || '').trim().slice(0, 500);
+      const caption = rawCaption.length > 0 ? rawCaption : null;
+
       const result = await pool.query(
-        `INSERT INTO content_items (author_id, author_username, title, media_type, file_path, expires_at)
-         VALUES ($1, $2, $3, 'image', $4, $5)
-         RETURNING id, author_username, title, file_path, created_at, expires_at`,
-        [req.user.id, req.user.username, title, filename, expiresAt]
+        `INSERT INTO content_items (author_id, author_username, title, caption, duration_hours, media_type, file_path, expires_at)
+         VALUES ($1, $2, $3, $4, $5, 'image', $6, $7)
+         RETURNING id, author_username, title, caption, duration_hours, file_path, created_at, expires_at`,
+        [req.user.id, req.user.username, title, caption, lifespanHours, filename, expiresAt]
       );
       const row = result.rows[0];
       res.status(201).json(shapeRow({ ...row, likes: 0, dislikes: 0, comment_count: 0, my_vote: null, extended_today: false, reported_by_me: false }));
     } catch (e) {
       console.error('Error al guardar la publicación:', e);
+      if (savedPath) { try { fs.unlinkSync(savedPath); } catch (e2) { /* ya no estaba */ } }
       res.status(500).json({ error: 'server_error', message: 'No se pudo publicar la imagen.' });
     }
   });
@@ -231,15 +249,17 @@ router.post('/:id/extend', requireAuth, async (req, res) => {
     return res.status(500).json({ error: 'server_error', message: 'No se pudo ampliar el tiempo.' });
   }
   try {
+    // Amplía el mismo bloque de horas que se eligió al subir (12h/24h/48h),
+    // no una cantidad fija global.
     const result = await pool.query(
-      `UPDATE content_items SET expires_at = expires_at + ($2 || ' hours')::interval
-       WHERE id = $1 AND hidden_reason IS NULL RETURNING expires_at`,
-      [id, EXTEND_HOURS]
+      `UPDATE content_items SET expires_at = expires_at + (duration_hours || ' hours')::interval
+       WHERE id = $1 AND hidden_reason IS NULL RETURNING expires_at, duration_hours`,
+      [id]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'not_found', message: 'Esta publicación ya no está disponible.' });
     }
-    res.json({ expiresAt: result.rows[0].expires_at });
+    res.json({ expiresAt: result.rows[0].expires_at, extendedHours: result.rows[0].duration_hours });
   } catch (e) {
     console.error('Error al actualizar expiración:', e);
     res.status(500).json({ error: 'server_error', message: 'No se pudo ampliar el tiempo.' });

@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS reports (
 -- en cada arranque vía "npm run start:prod").
 ALTER TABLE content_items ADD COLUMN IF NOT EXISTS title TEXT;
 
+-- Añadido más adelante: texto de contexto (pie de foto) y la duración original
+-- elegida al subir, para que "ampliar tiempo" añada siempre ese mismo bloque.
+ALTER TABLE content_items ADD COLUMN IF NOT EXISTS caption TEXT;
+ALTER TABLE content_items ADD COLUMN IF NOT EXISTS duration_hours INT NOT NULL DEFAULT 24;
+
 CREATE TABLE IF NOT EXISTS comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   item_id UUID NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,

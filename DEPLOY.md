@@ -82,3 +82,22 @@ pago sin perder lo que ya tengas.
 
 Dime exactamente qué ves en la pantalla (o pégame el mensaje de error) y seguimos desde ahí.
 No hace falta que sepas de qué se trata el error — para eso estoy.
+
+## Activar la moderación automática de imágenes
+
+Por defecto está **desactivada** (para no romper nada antes de que decidas un proveedor).
+Cuando quieras activarla:
+
+1. Crea una cuenta en [sightengine.com](https://sightengine.com) (tiene plan de pruebas gratuito).
+2. Copia tu "API User" y "API Secret" desde su panel.
+3. En Render, entra en tu servicio → **Environment** → añade/edita:
+   - `MODERATION_ENABLED` = `true`
+   - `SIGHTENGINE_API_USER` = el que copiaste
+   - `SIGHTENGINE_API_SECRET` = el que copiaste
+4. Guarda — Render redesplegará solo con la moderación activa.
+
+Recuerda: esto filtra desnudez/contenido explícito en general, pero **no es una herramienta de
+detección de material de abuso infantil (CSAM)**. Si vas a alojar contenido para adultos en
+abierto, además de esto necesitas solicitar acceso a un programa específico para eso, como
+Thorn Safer o Microsoft PhotoDNA — muchos ofrecen acceso gratuito a plataformas pequeñas
+precisamente por ser una prioridad de protección infantil.

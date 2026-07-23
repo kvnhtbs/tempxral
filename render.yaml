@@ -29,6 +29,12 @@ services:
         generateValue: true       # Render genera un valor aleatorio seguro solo, no hay que escribir nada
       - key: NODE_ENV
         value: production
+      - key: MODERATION_ENABLED
+        value: "false"            # cámbialo a "true" cuando tengas cuenta en Sightengine (ver DEPLOY.md)
+      - key: SIGHTENGINE_API_USER
+        sync: false               # rellénalo tú directamente en el panel de Render, no se guarda en GitHub
+      - key: SIGHTENGINE_API_SECRET
+        sync: false
 
 databases:
   - name: tempxral-db

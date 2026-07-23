@@ -1,5 +1,4 @@
 (function () {
-  const EXTEND_HOURS = 24;
 
   const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1 };
 
@@ -119,33 +118,46 @@
     render();
   }
 
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    fileInput.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { toast('Solo se admiten imágenes por ahora.'); return; }
-    requireAuth(async () => {
-      toast('Subiendo imagen…');
-      try {
-        const titleInput = $('#txp-title-input');
-        const durationSelect = $('#txp-duration-select');
-        const form = new FormData();
-        form.append('file', file);
-        form.append('title', (titleInput.value || '').trim().slice(0, 120));
-        form.append('durationHours', durationSelect.value);
-        const item = await api('/api/items', { method: 'POST', body: form });
-        state.items.unshift(item);
-        titleInput.value = '';
-        toast('Imagen publicada. Estará visible ' + durationSelect.value + 'h... para empezar.');
-        render();
-      } catch (e) {
-        toast(e.message || 'No se pudo subir la imagen.');
-      }
+  const uploadOverlay = $('#txp-upload-overlay');
+  const uploadErr = $('#txp-upload-err');
+
+  $('#txp-upload-btn').addEventListener('click', () => {
+    requireAuth(() => {
+      uploadErr.textContent = '';
+      fileInput.value = '';
+      $('#txp-title-input').value = '';
+      $('#txp-caption-input').value = '';
+      $('#txp-duration-select').value = '24';
+      uploadOverlay.classList.add('open');
     });
   });
-  $('#txp-upload-btn').addEventListener('click', () => {
-    if (!state.currentUser) { requireAuth(() => {}); return; }
-    fileInput.click();
+  $('#txp-upload-modal-close').addEventListener('click', () => uploadOverlay.classList.remove('open'));
+  uploadOverlay.addEventListener('click', (e) => { if (e.target === uploadOverlay) uploadOverlay.classList.remove('open'); });
+
+  $('#txp-upload-submit-btn').addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    uploadErr.textContent = '';
+    if (!file) { uploadErr.textContent = 'Elige una imagen primero.'; return; }
+    if (!file.type.startsWith('image/')) { uploadErr.textContent = 'Solo se admiten imágenes por ahora.'; return; }
+
+    const durationSelect = $('#txp-duration-select');
+    const titleInput = $('#txp-title-input');
+    const captionInput = $('#txp-caption-input');
+
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('title', titleInput.value.trim().slice(0, 120));
+      form.append('caption', captionInput.value.trim().slice(0, 500));
+      form.append('durationHours', durationSelect.value);
+      const item = await api('/api/items', { method: 'POST', body: form });
+      state.items.unshift(item);
+      uploadOverlay.classList.remove('open');
+      toast('Imagen publicada. Estará visible ' + durationSelect.value + 'h... para empezar.');
+      render();
+    } catch (e) {
+      uploadErr.textContent = e.message || 'No se pudo subir la imagen.';
+    }
   });
 
   async function vote(itemId, value) {
@@ -170,7 +182,7 @@
         const result = await api('/api/items/' + itemId + '/extend', { method: 'POST' });
         const item = state.items.find(i => i.id === itemId);
         if (item) { item.expiresAt = result.expiresAt; item.extendedToday = true; }
-        toast('+' + EXTEND_HOURS + 'h añadidas al tiempo de vida.');
+        toast('+' + result.extendedHours + 'h añadidas al tiempo de vida.');
         render();
       } catch (e) {
         toast(e.message || 'No se pudo ampliar el tiempo.');
@@ -228,6 +240,7 @@
       <img class="txp-lightbox-img" src="${item.imageUrl}" alt="${escapeHtml(item.title || 'Contenido de ' + item.author)}">
       <div class="txp-lightbox-info">
         ${item.title ? `<h3 class="txp-lightbox-title">${escapeHtml(item.title)}</h3>` : ''}
+        ${item.caption ? `<p class="txp-lightbox-caption">${escapeHtml(item.caption)}</p>` : ''}
         <div class="txp-meta"><span>@${escapeHtml(item.author)}</span><span>${relativeSince(item.createdAt)}</span></div>
         <div class="txp-actions">
           <div class="txp-votes">
@@ -235,7 +248,7 @@
             <button class="txp-stamp dislike ${item.myVote === -1 ? 'active' : ''}" data-lb-vote="-1">▼ ${item.dislikes}</button>
           </div>
           <span class="txp-score">Total: ${item.net > 0 ? '+' + item.net : item.net}</span>
-          <button class="txp-extend" data-lb-extend="1" ${item.extendedToday ? 'disabled' : ''}>${item.extendedToday ? 'Ampliado hoy' : '+' + EXTEND_HOURS + 'h'}</button>
+          <button class="txp-extend" data-lb-extend="1" ${item.extendedToday ? 'disabled' : ''}>${item.extendedToday ? 'Ampliado hoy' : '+' + item.durationHours + 'h'}</button>
         </div>
         <h4 class="txp-comments-title">Comentarios (${comments.length})</h4>
         <div class="txp-comments-list">${commentsHtml}</div>
@@ -267,7 +280,7 @@
         item.extendedToday = true;
         const gridItem = state.items.find(i => i.id === item.id);
         if (gridItem) { gridItem.expiresAt = result.expiresAt; gridItem.extendedToday = true; }
-        toast('+' + EXTEND_HOURS + 'h añadidas.');
+        toast('+' + result.extendedHours + 'h añadidas.');
         renderLightbox(item, comments);
         render();
       } catch (e) { toast(e.message || 'No se pudo ampliar el tiempo.'); }
@@ -449,6 +462,7 @@
           <button class="txp-report-btn ${item.reportedByMe ? 'reported' : ''}" data-report="1" title="${item.reportedByMe ? 'Ya reportado' : 'Reportar contenido inapropiado'}">&#9873;</button>
         </div>
         ${item.title ? `<div class="txp-card-title">${escapeHtml(item.title)}</div>` : ''}
+        ${item.caption ? `<div class="txp-card-caption">${escapeHtml(item.caption)}</div>` : ''}
         <div class="txp-meta">
           <span>@${escapeHtml(item.author)}</span>
           <span>${relativeSince(item.createdAt)}</span>
@@ -461,7 +475,7 @@
             <button class="txp-stamp dislike ${item.myVote === -1 ? 'active' : ''}" data-vote="-1">▼ ${item.dislikes}</button>
           </div>
           <span class="txp-score">Total: ${item.net > 0 ? '+' + item.net : item.net}</span>
-          <button class="txp-extend" data-extend="1" ${item.extendedToday ? 'disabled' : ''}>${item.extendedToday ? 'Ampliado hoy' : '+' + EXTEND_HOURS + 'h'}</button>
+          <button class="txp-extend" data-extend="1" ${item.extendedToday ? 'disabled' : ''}>${item.extendedToday ? 'Ampliado hoy' : '+' + item.durationHours + 'h'}</button>
         </div>
         <button class="txp-comments-btn" data-open-lightbox="1">💬 ${item.commentCount || 0} comentario(s)</button>
       `;
