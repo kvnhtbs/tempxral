@@ -184,10 +184,25 @@
       if (roomSlug) form.append('roomSlug', roomSlug);
 
       const item = await api('/api/items', { method: 'POST', body: form });
-      if (!state.currentRoom || state.currentRoom === roomSlug) state.items.unshift(item);
+
+      const belongsToCurrentView =
+        state.currentRoom === 'all' ||
+        (state.currentRoom === 'general' && !roomSlug) ||
+        (state.currentRoom !== 'all' && state.currentRoom !== 'general' && state.currentRoom === roomSlug);
+
       uploadOverlay.classList.remove('open');
       toast((item.isAlbum ? 'Álbum publicado' : 'Imagen publicada') + '. Estará visible ' + durationSelect.value + 'h... para empezar.');
-      render();
+
+      if (belongsToCurrentView) {
+        state.items.unshift(item);
+        render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        // Se publicó en una sala que no es la que estás viendo ahora mismo:
+        // no lo metemos en la lista actual (saldría descolocado), pero
+        // refrescamos la barra de salas para que el contador se actualice.
+        loadRooms();
+      }
     } catch (e) {
       uploadErr.textContent = e.message || 'No se pudo subir la imagen.';
     } finally {
@@ -687,6 +702,21 @@
       switchRoom(room.slug);
     } catch (e) {
       errEl.textContent = e.message || 'No se pudo crear la sala.';
+    }
+  });
+
+  $('#txp-logo-home').addEventListener('click', () => {
+    // "Ir a inicio": cierra cualquier ventana abierta, vuelve a la vista
+    // "Todo" y sube arriba del todo.
+    overlay.classList.remove('open');
+    lightboxOverlay.classList.remove('open');
+    accountOverlay.classList.remove('open');
+    uploadOverlay.classList.remove('open');
+    $('#txp-newroom-overlay').classList.remove('open');
+    if (state.currentRoom !== 'all') {
+      switchRoom('all');
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   });
 
