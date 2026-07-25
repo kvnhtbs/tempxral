@@ -13,10 +13,15 @@ services:
   - type: web
     name: tempxral
     runtime: node
-    plan: free
+    rootDir: tempxral-app          # el código vive en esta subcarpeta del repositorio
+    plan: starter                  # Cambiado a starter para permitir el uso de discos persistentes
     buildCommand: npm install
     startCommand: npm run start:prod   # aplica el esquema de base de datos y luego arranca, automático en cada despliegue
     healthCheckPath: /api/health
+    disk:                          # Configuración del disco persistente
+      name: tempxral-data
+      mountPath: /var/data         # Ruta dentro de la app para guardar archivos persistentes
+      sizeGB: 1                    # Tamaño del disco en GB
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -25,13 +30,13 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: JWT_SECRET
-        generateValue: true       # Render genera un valor aleatorio seguro solo, no hay que escribir nada
+        generateValue: true        # Render genera un valor aleatorio seguro solo, no hay que escribir nada
       - key: NODE_ENV
         value: production
       - key: MODERATION_ENABLED
-        value: "false"            # cámbialo a "true" cuando tengas cuenta en Sightengine (ver DEPLOY.md)
+        value: "false"             # cámbialo a "true" cuando tengas cuenta en Sightengine (ver DEPLOY.md)
       - key: SIGHTENGINE_API_USER
-        sync: false               # rellénalo tú directamente en el panel de Render, no se guarda en GitHub
+        sync: false                # rellénalo tú directamente en el panel de Render, no se guarda en GitHub
       - key: SIGHTENGINE_API_SECRET
         sync: false
 
@@ -39,4 +44,4 @@ databases:
   - name: tempxral-db
     databaseName: tempxral
     user: tempxral
-    plan: free
+    plan: starter                  # Cambiado a starter para que no expire a los 90 días como el plan gratuito
