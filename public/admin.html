@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tempxral — Admin</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .txp-admin{ max-width: 960px; margin: 0 auto; }
+  .txp-admin-tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+  .txp-admin-tab{
+    font-family: var(--font-mono); font-size:12px; padding:8px 14px; border-radius:20px;
+    border:1px solid rgba(242,236,217,0.25); background:transparent; color: var(--muted-light); cursor:pointer;
+  }
+  .txp-admin-tab.active{ background: var(--paper); color: var(--ink); border-color: var(--paper); font-weight:700; }
+  .txp-admin-row{
+    display:flex; gap:14px; align-items:flex-start; background: var(--paper); color: var(--ink);
+    border-radius:4px; padding:14px; margin-bottom:10px;
+  }
+  .txp-admin-row img{ width:70px; height:70px; object-fit:cover; border-radius:3px; flex-shrink:0; }
+  .txp-admin-row .info{ flex:1; font-size:13px; line-height:1.5; }
+  .txp-admin-row .info .title{ font-weight:700; }
+  .txp-admin-row .info .meta{ font-family: var(--font-mono); font-size:11px; color: var(--muted); }
+  .txp-admin-row .badge{ display:inline-block; font-family: var(--font-mono); font-size:10.5px; background: var(--rust); color:#fff; padding:2px 7px; border-radius:8px; margin-right:6px; }
+  .txp-admin-actions{ display:flex; flex-direction:column; gap:6px; }
+  .txp-admin-danger{ background: var(--rust); color:#fff; border:none; padding:7px 12px; border-radius:3px; font-family: var(--font-mono); font-size:11px; cursor:pointer; }
+  .txp-admin-search{ margin-bottom:16px; }
+  .txp-admin-search input{ padding:9px 12px; border-radius:3px; border:1px solid rgba(242,236,217,0.3); background: var(--bg-elevated); color: var(--paper); font-family: var(--font-body); width:260px; }
+</style>
+</head>
+<body>
+<div class="txp-admin">
+  <div class="txp-header">
+    <div>
+      <p class="txp-logo">Temp<span class="x">x</span>ral <span style="font-size:16px; color: var(--muted-light);">/ admin</span></p>
+    </div>
+    <div class="txp-auth" id="txp-auth-area"></div>
+  </div>
+
+  <div id="txp-admin-gate"></div>
+  <div id="txp-admin-panel" style="display:none;">
+    <div class="txp-admin-tabs">
+      <button class="txp-admin-tab active" data-tab="reported">Reportado</button>
+      <button class="txp-admin-tab" data-tab="all">Todo el contenido</button>
+      <button class="txp-admin-tab" data-tab="hidden">Ocultas</button>
+      <button class="txp-admin-tab" data-tab="rooms">Salas</button>
+      <button class="txp-admin-tab" data-tab="users">Usuarios</button>
+    </div>
+    <div id="txp-admin-content"><div class="txp-loading">Cargando…</div></div>
+  </div>
+</div>
+
+<div class="txp-toast" id="txp-toast"></div>
+
+<script src="/admin.js"></script>
+</body>
+</html>

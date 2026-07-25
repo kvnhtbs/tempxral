@@ -16,6 +16,8 @@
   <div class="txp-auth" id="txp-auth-area"></div>
 </div>
 
+<div class="txp-rooms-bar" id="txp-rooms-bar"></div>
+
 <div class="txp-banner" id="txp-banner" style="display:none;">
   <span>Estás navegando como visitante. Puedes ver todo, pero necesitas una cuenta para subir, votar, ampliar tiempo o reportar.</span>
   <button class="txp-btn primary" id="txp-banner-register">Registrarme</button>
@@ -45,8 +47,9 @@
     <p class="sub">No podrás eliminarla después de publicarla.</p>
 
     <div class="txp-field">
-      <label for="txp-file-input">Imagen</label>
-      <input type="file" id="txp-file-input" accept="image/*">
+      <label for="txp-file-input">Imagen(es) — hasta 10, se publican como álbum</label>
+      <input type="file" id="txp-file-input" accept="image/*" multiple>
+      <p class="txp-file-count" id="txp-file-count"></p>
     </div>
     <div class="txp-field">
       <label for="txp-title-input">Título (opcional)</label>
@@ -55,6 +58,22 @@
     <div class="txp-field">
       <label for="txp-caption-input">Pie de foto (opcional)</label>
       <textarea id="txp-caption-input" placeholder="Da contexto a tu publicación, si quieres" maxlength="500" rows="3"></textarea>
+    </div>
+    <div class="txp-field">
+      <label for="txp-room-select">Sala</label>
+      <select id="txp-room-select">
+        <option value="">General</option>
+      </select>
+      <button class="txp-switch" id="txp-new-room-toggle" type="button">+ Crear una sala nueva</button>
+      <div id="txp-new-room-fields" style="display:none; margin-top:8px;">
+        <input type="text" id="txp-new-room-name" placeholder="Nombre de la sala" maxlength="60" style="margin-bottom:6px;">
+        <select id="txp-new-room-duration">
+          <option value="1">Dura 1 hora</option>
+          <option value="6">Dura 6 horas</option>
+          <option value="24" selected>Dura 24 horas</option>
+          <option value="72">Dura 72 horas</option>
+        </select>
+      </div>
     </div>
     <div class="txp-field">
       <label for="txp-duration-select">Tiempo inicial en la cuadrícula</label>

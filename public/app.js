@@ -1,6 +1,6 @@
 (function () {
 
-  const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1 };
+  const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1, rooms: [], currentRoom: null };
 
   const $ = (sel) => document.querySelector(sel);
   const authArea = $('#txp-auth-area');
@@ -21,6 +21,7 @@
   const accountOverlay = $('#txp-account-overlay');
   const accountBody = $('#txp-account-body');
   const loadMoreBtn = $('#txp-load-more-btn');
+  const roomsBar = $('#txp-rooms-bar');
 
   function toast(msg) {
     toastEl.textContent = msg;
@@ -125,38 +126,73 @@
     requireAuth(() => {
       uploadErr.textContent = '';
       fileInput.value = '';
+      $('#txp-file-count').textContent = '';
       $('#txp-title-input').value = '';
       $('#txp-caption-input').value = '';
       $('#txp-duration-select').value = '24';
+      $('#txp-new-room-fields').style.display = 'none';
+      $('#txp-new-room-name').value = '';
+      $('#txp-room-select').disabled = false;
+      populateRoomSelect();
       uploadOverlay.classList.add('open');
     });
   });
   $('#txp-upload-modal-close').addEventListener('click', () => uploadOverlay.classList.remove('open'));
   uploadOverlay.addEventListener('click', (e) => { if (e.target === uploadOverlay) uploadOverlay.classList.remove('open'); });
 
+  fileInput.addEventListener('change', () => {
+    const n = fileInput.files.length;
+    $('#txp-file-count').textContent = n === 0 ? '' : n === 1 ? '1 imagen seleccionada' : n + ' imágenes seleccionadas (álbum)';
+  });
+
   $('#txp-upload-submit-btn').addEventListener('click', async () => {
-    const file = fileInput.files[0];
+    const files = Array.from(fileInput.files || []);
     uploadErr.textContent = '';
-    if (!file) { uploadErr.textContent = 'Elige una imagen primero.'; return; }
-    if (!file.type.startsWith('image/')) { uploadErr.textContent = 'Solo se admiten imágenes por ahora.'; return; }
+    if (files.length === 0) { uploadErr.textContent = 'Elige al menos una imagen.'; return; }
+    if (files.some(f => !f.type.startsWith('image/'))) { uploadErr.textContent = 'Solo se admiten imágenes por ahora.'; return; }
+    if (files.length > 10) { uploadErr.textContent = 'Máximo 10 imágenes por publicación.'; return; }
 
     const durationSelect = $('#txp-duration-select');
     const titleInput = $('#txp-title-input');
     const captionInput = $('#txp-caption-input');
+    const roomSelect = $('#txp-room-select');
+    const newRoomFieldsOpen = $('#txp-new-room-fields').style.display !== 'none';
+    const submitBtn = $('#txp-upload-submit-btn');
 
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Publicando…';
     try {
+      let roomSlug = roomSelect.value;
+
+      if (newRoomFieldsOpen) {
+        const roomName = $('#txp-new-room-name').value.trim();
+        if (roomName.length < 2) { throw new Error('Ponle un nombre a la sala nueva (mínimo 2 caracteres).'); }
+        const roomDuration = $('#txp-new-room-duration').value;
+        const newRoom = await api('/api/rooms', {
+          method: 'POST',
+          body: JSON.stringify({ name: roomName, durationHours: roomDuration })
+        });
+        roomSlug = newRoom.slug;
+        await loadRooms();
+      }
+
       const form = new FormData();
-      form.append('file', file);
+      files.forEach(f => form.append('files', f));
       form.append('title', titleInput.value.trim().slice(0, 120));
       form.append('caption', captionInput.value.trim().slice(0, 500));
       form.append('durationHours', durationSelect.value);
+      if (roomSlug) form.append('roomSlug', roomSlug);
+
       const item = await api('/api/items', { method: 'POST', body: form });
-      state.items.unshift(item);
+      if (!state.currentRoom || state.currentRoom === roomSlug) state.items.unshift(item);
       uploadOverlay.classList.remove('open');
-      toast('Imagen publicada. Estará visible ' + durationSelect.value + 'h... para empezar.');
+      toast((item.isAlbum ? 'Álbum publicado' : 'Imagen publicada') + '. Estará visible ' + durationSelect.value + 'h... para empezar.');
       render();
     } catch (e) {
       uploadErr.textContent = e.message || 'No se pudo subir la imagen.';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Publicar';
     }
   });
 
@@ -213,7 +249,10 @@
   $('#txp-lightbox-close').addEventListener('click', () => lightboxOverlay.classList.remove('open'));
   lightboxOverlay.addEventListener('click', (e) => { if (e.target === lightboxOverlay) lightboxOverlay.classList.remove('open'); });
 
+  let lightboxIndex = 0;
+
   async function openLightbox(itemId) {
+    lightboxIndex = 0;
     lightboxOverlay.classList.add('open');
     lightboxBody.innerHTML = '<div class="txp-loading">Cargando…</div>';
     try {
@@ -225,6 +264,10 @@
   }
 
   function renderLightbox(item, comments) {
+    const media = item.media && item.media.length ? item.media : [item.imageUrl];
+    if (lightboxIndex >= media.length) lightboxIndex = 0;
+    const currentSrc = media[lightboxIndex];
+
     const commentsHtml = comments.length === 0
       ? '<p class="txp-no-comments">Sé el primero en comentar.</p>'
       : comments.map(c => `
@@ -235,9 +278,16 @@
 
     lightboxBody.innerHTML = `
       <div class="txp-lightbox-toprow">
-        <a class="txp-download-btn" href="${item.imageUrl}" download="tempxral-${item.id}.jpg">⬇ Descargar</a>
+        <a class="txp-download-btn" href="${currentSrc}" download="tempxral-${item.id}-${lightboxIndex + 1}.jpg">⬇ Descargar</a>
       </div>
-      <img class="txp-lightbox-img" src="${item.imageUrl}" alt="${escapeHtml(item.title || 'Contenido de ' + item.author)}">
+      <div class="txp-carousel">
+        <img class="txp-lightbox-img" src="${currentSrc}" alt="${escapeHtml(item.title || 'Contenido de ' + item.author)}">
+        ${media.length > 1 ? `
+          <button class="txp-carousel-nav prev" data-carousel="prev">&#8249;</button>
+          <button class="txp-carousel-nav next" data-carousel="next">&#8250;</button>
+        ` : ''}
+      </div>
+      ${media.length > 1 ? `<div class="txp-carousel-dots">${lightboxIndex + 1} / ${media.length}</div>` : ''}
       <div class="txp-lightbox-info">
         ${item.title ? `<h3 class="txp-lightbox-title">${escapeHtml(item.title)}</h3>` : ''}
         ${item.caption ? `<p class="txp-lightbox-caption">${escapeHtml(item.caption)}</p>` : ''}
@@ -258,6 +308,11 @@
         </div>
       </div>
     `;
+
+    const prevBtn = lightboxBody.querySelector('[data-carousel="prev"]');
+    const nextBtn = lightboxBody.querySelector('[data-carousel="next"]');
+    if (prevBtn) prevBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex - 1 + media.length) % media.length; renderLightbox(item, comments); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex + 1) % media.length; renderLightbox(item, comments); });
 
     lightboxBody.querySelectorAll('[data-lb-vote]').forEach(btn => btn.addEventListener('click', () => {
       requireAuth(async () => {
@@ -460,6 +515,7 @@
         <div class="txp-imgwrap">
           <img src="${item.imageUrl}" alt="${escapeHtml(item.title || 'Contenido publicado por ' + item.author)}" loading="lazy" data-open-lightbox="1">
           <button class="txp-report-btn ${item.reportedByMe ? 'reported' : ''}" data-report="1" title="${item.reportedByMe ? 'Ya reportado' : 'Reportar contenido inapropiado'}">&#9873;</button>
+          ${item.isAlbum ? `<span class="txp-album-badge">📷 1/${item.media.length}</span>` : ''}
         </div>
         ${item.title ? `<div class="txp-card-title">${escapeHtml(item.title)}</div>` : ''}
         ${item.caption ? `<div class="txp-card-caption">${escapeHtml(item.caption)}</div>` : ''}
@@ -503,10 +559,14 @@
     loadMoreBtn.disabled = false;
   }
 
+  function roomQuerySuffix() {
+    return state.currentRoom ? '&room=' + encodeURIComponent(state.currentRoom) : '';
+  }
+
   async function refreshItems() {
     if (state.pagesLoaded > 1) return; // no interrumpir si el usuario ya cargó más páginas
     try {
-      const data = await api('/api/items');
+      const data = await api('/api/items?limit=24' + roomQuerySuffix());
       state.items = data.items;
       state.nextCursor = data.nextCursor;
       state.hasMore = data.hasMore;
@@ -522,7 +582,7 @@
     loadMoreBtn.textContent = 'Cargando…';
     loadMoreBtn.disabled = true;
     try {
-      const data = await api('/api/items?before=' + encodeURIComponent(state.nextCursor));
+      const data = await api('/api/items?before=' + encodeURIComponent(state.nextCursor) + roomQuerySuffix());
       state.items = state.items.concat(data.items);
       state.nextCursor = data.nextCursor;
       state.hasMore = data.hasMore;
@@ -536,13 +596,65 @@
   }
   loadMoreBtn.addEventListener('click', loadMore);
 
+  async function switchRoom(slug) {
+    state.currentRoom = slug || null;
+    state.pagesLoaded = 1;
+    state.items = [];
+    gridArea.innerHTML = '<div class="txp-loading">Cargando contenido…</div>';
+    renderRoomsBar();
+    await refreshItems();
+  }
+
+  async function loadRooms() {
+    try {
+      const data = await api('/api/rooms');
+      state.rooms = data.rooms;
+      renderRoomsBar();
+      populateRoomSelect();
+    } catch (e) { /* si falla, simplemente no se muestran salas */ }
+  }
+
+  function renderRoomsBar() {
+    roomsBar.innerHTML = '';
+    const generalPill = document.createElement('button');
+    generalPill.className = 'txp-room-pill' + (!state.currentRoom ? ' active' : '');
+    generalPill.textContent = 'General';
+    generalPill.addEventListener('click', () => switchRoom(null));
+    roomsBar.appendChild(generalPill);
+
+    state.rooms.forEach(room => {
+      const pill = document.createElement('button');
+      pill.className = 'txp-room-pill' + (state.currentRoom === room.slug ? ' active' : '') + (room.isTemporary ? ' temp' : '');
+      pill.innerHTML = escapeHtml(room.name) + ' <span class="count">' + room.activeCount + '</span>';
+      pill.title = room.isTemporary ? 'Sala temporal' : 'Sala permanente';
+      pill.addEventListener('click', () => switchRoom(room.slug));
+      roomsBar.appendChild(pill);
+    });
+  }
+
+  function populateRoomSelect() {
+    const select = $('#txp-room-select');
+    select.innerHTML = '<option value="">General</option>' +
+      state.rooms.map(r => `<option value="${escapeHtml(r.slug)}">${escapeHtml(r.name)}</option>`).join('');
+    if (state.currentRoom) select.value = state.currentRoom;
+  }
+
+  $('#txp-new-room-toggle').addEventListener('click', () => {
+    const fields = $('#txp-new-room-fields');
+    const isOpen = fields.style.display !== 'none';
+    fields.style.display = isOpen ? 'none' : 'block';
+    $('#txp-room-select').disabled = !isOpen;
+  });
+
   async function init() {
     try {
       const me = await api('/api/auth/me');
       state.currentUser = me.username;
     } catch (e) { /* seguimos como visitante */ }
+    await loadRooms();
     await refreshItems();
     setInterval(refreshItems, 20000);
+    setInterval(loadRooms, 30000);
   }
 
   init();

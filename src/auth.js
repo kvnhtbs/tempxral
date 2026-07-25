@@ -48,4 +48,22 @@ function requireAuth(req, res, next) {
   });
 }
 
-module.exports = { COOKIE_NAME, signToken, setAuthCookie, clearAuthCookie, optionalAuth, requireAuth };
+// Exige sesión de administrador. Comprueba is_admin en la base de datos en
+// cada petición (no en el JWT), así que conceder/quitar admin surte efecto
+// al momento sin tener que esperar a que caduque la sesión.
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, async () => {
+    try {
+      const { pool } = require('./db');
+      const result = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
+      if (!result.rows[0] || !result.rows[0].is_admin) {
+        return res.status(403).json({ error: 'forbidden', message: 'No tienes permisos de administrador.' });
+      }
+      next();
+    } catch (e) {
+      res.status(500).json({ error: 'server_error', message: 'No se pudo comprobar tus permisos.' });
+    }
+  });
+}
+
+module.exports = { COOKIE_NAME, signToken, setAuthCookie, clearAuthCookie, optionalAuth, requireAuth, requireAdmin };

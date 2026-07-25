@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS content_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -62,3 +63,35 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_comments_item ON comments (item_id, created_at);
+
+-- Añadido más adelante: álbumes (varias imágenes por publicación) y salas.
+CREATE TABLE IF NOT EXISTS content_media (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_id UUID NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_content_media_item ON content_media (item_id, position);
+
+-- Migra las publicaciones antiguas (una sola imagen en content_items.file_path)
+-- a la nueva tabla, para que todo el código nuevo lea siempre de content_media.
+INSERT INTO content_media (item_id, file_path, position)
+SELECT id, file_path, 0 FROM content_items
+WHERE file_path IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM content_media cm WHERE cm.item_id = content_items.id);
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  expires_at TIMESTAMPTZ, -- NULL = sala permanente (creada directamente en la base de datos)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE content_items ADD COLUMN IF NOT EXISTS room_id UUID REFERENCES rooms(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_content_items_room ON content_items (room_id);
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- Añadido más adelante: panel de administración.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
