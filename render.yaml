@@ -13,6 +13,7 @@ services:
   - type: web
     name: tempxral
     runtime: node
+    rootDir: tempxral-app          # el código vive en esta subcarpeta del repositorio
     plan: free
     buildCommand: npm install
     startCommand: npm run start:prod   # aplica el esquema de base de datos y luego arranca, automático en cada despliegue

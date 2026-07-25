@@ -1,6 +1,6 @@
 (function () {
 
-  const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1, rooms: [], currentRoom: null };
+  const state = { currentUser: null, items: [], mode: 'login', nextCursor: null, hasMore: false, loadingMore: false, pagesLoaded: 1, rooms: [], currentRoom: 'all' };
 
   const $ = (sel) => document.querySelector(sel);
   const authArea = $('#txp-auth-area');
@@ -519,6 +519,7 @@
         </div>
         ${item.title ? `<div class="txp-card-title">${escapeHtml(item.title)}</div>` : ''}
         ${item.caption ? `<div class="txp-card-caption">${escapeHtml(item.caption)}</div>` : ''}
+        ${(state.currentRoom === 'all' && item.roomName) ? `<div class="txp-card-room">📍 ${escapeHtml(item.roomName)}</div>` : ''}
         <div class="txp-meta">
           <span>@${escapeHtml(item.author)}</span>
           <span>${relativeSince(item.createdAt)}</span>
@@ -560,7 +561,9 @@
   }
 
   function roomQuerySuffix() {
-    return state.currentRoom ? '&room=' + encodeURIComponent(state.currentRoom) : '';
+    if (state.currentRoom === 'all') return '';
+    if (state.currentRoom === 'general') return '&room=general';
+    return '&room=' + encodeURIComponent(state.currentRoom);
   }
 
   async function refreshItems() {
@@ -596,8 +599,8 @@
   }
   loadMoreBtn.addEventListener('click', loadMore);
 
-  async function switchRoom(slug) {
-    state.currentRoom = slug || null;
+  async function switchRoom(mode) {
+    state.currentRoom = mode; // 'all' | 'general' | <slug>
     state.pagesLoaded = 1;
     state.items = [];
     gridArea.innerHTML = '<div class="txp-loading">Cargando contenido…</div>';
@@ -616,10 +619,19 @@
 
   function renderRoomsBar() {
     roomsBar.innerHTML = '';
+
+    const allPill = document.createElement('button');
+    allPill.className = 'txp-room-pill' + (state.currentRoom === 'all' ? ' active' : '');
+    allPill.textContent = 'Todo';
+    allPill.title = 'Todo lo publicado, en cualquier sala';
+    allPill.addEventListener('click', () => switchRoom('all'));
+    roomsBar.appendChild(allPill);
+
     const generalPill = document.createElement('button');
-    generalPill.className = 'txp-room-pill' + (!state.currentRoom ? ' active' : '');
+    generalPill.className = 'txp-room-pill' + (state.currentRoom === 'general' ? ' active' : '');
     generalPill.textContent = 'General';
-    generalPill.addEventListener('click', () => switchRoom(null));
+    generalPill.title = 'Solo lo publicado sin sala asignada';
+    generalPill.addEventListener('click', () => switchRoom('general'));
     roomsBar.appendChild(generalPill);
 
     state.rooms.forEach(room => {
@@ -630,6 +642,18 @@
       pill.addEventListener('click', () => switchRoom(room.slug));
       roomsBar.appendChild(pill);
     });
+
+    const newRoomBtn = document.createElement('button');
+    newRoomBtn.className = 'txp-room-pill';
+    newRoomBtn.style.borderStyle = 'dashed';
+    newRoomBtn.textContent = '+ Nueva sala';
+    newRoomBtn.addEventListener('click', () => requireAuth(() => {
+      $('#txp-newroom-err').textContent = '';
+      $('#txp-newroom-name').value = '';
+      $('#txp-newroom-duration').value = '24';
+      $('#txp-newroom-overlay').classList.add('open');
+    }));
+    roomsBar.appendChild(newRoomBtn);
   }
 
   function populateRoomSelect() {
@@ -644,6 +668,26 @@
     const isOpen = fields.style.display !== 'none';
     fields.style.display = isOpen ? 'none' : 'block';
     $('#txp-room-select').disabled = !isOpen;
+  });
+
+  $('#txp-newroom-close').addEventListener('click', () => $('#txp-newroom-overlay').classList.remove('open'));
+  $('#txp-newroom-overlay').addEventListener('click', (e) => { if (e.target === $('#txp-newroom-overlay')) $('#txp-newroom-overlay').classList.remove('open'); });
+
+  $('#txp-newroom-submit').addEventListener('click', async () => {
+    const name = $('#txp-newroom-name').value.trim();
+    const durationHours = $('#txp-newroom-duration').value;
+    const errEl = $('#txp-newroom-err');
+    errEl.textContent = '';
+    if (name.length < 2) { errEl.textContent = 'Ponle un nombre a la sala (mínimo 2 caracteres).'; return; }
+    try {
+      const room = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name, durationHours }) });
+      await loadRooms();
+      $('#txp-newroom-overlay').classList.remove('open');
+      toast('Sala "' + room.name + '" creada. Dura ' + durationHours + 'h.');
+      switchRoom(room.slug);
+    } catch (e) {
+      errEl.textContent = e.message || 'No se pudo crear la sala.';
+    }
   });
 
   async function init() {

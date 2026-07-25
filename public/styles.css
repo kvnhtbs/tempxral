@@ -211,6 +211,7 @@ body{
   font-size:12.5px; color: var(--muted); line-height:1.4; margin-top:3px;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }
+.txp-card-room{ font-family: var(--font-mono); font-size:10.5px; color: var(--moss); margin-top:4px; }
 .txp-lightbox-caption{ font-size:13.5px; color: var(--muted); line-height:1.5; margin:0 0 10px; }
 .txp-imgwrap img{ cursor: pointer; }
 

@@ -37,6 +37,8 @@ const commentLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
 
 const BASE_COLUMNS = `
   c.id, c.author_username, c.title, c.caption, c.duration_hours, c.created_at, c.expires_at,
+  (SELECT r.name FROM rooms r WHERE r.id = c.room_id) AS room_name,
+  (SELECT r.slug FROM rooms r WHERE r.id = c.room_id) AS room_slug,
   COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
   COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = -1), 0)::int AS dislikes,
   COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.item_id = c.id), 0)::int AS comment_count,
@@ -47,16 +49,19 @@ const BASE_COLUMNS = `
 
 // Construye la consulta de listado con parámetros posicionales seguros
 // (nada de reemplazos de texto frágiles sobre el SQL ya escrito).
-function buildListQuery({ roomId, before, limit, userId }) {
+// roomMode: 'all' (todo, sin filtrar) | 'general' (sin sala asignada) | 'room' (una sala en concreto)
+function buildListQuery({ roomMode, roomId, before, limit, userId }) {
   const params = [userId];
   let sql = `SELECT ${BASE_COLUMNS} FROM content_items c WHERE c.hidden_reason IS NULL AND c.expires_at > now()`;
 
-  if (roomId) {
+  if (roomMode === 'general') {
+    sql += ` AND c.room_id IS NULL`;
+  } else if (roomMode === 'room') {
     params.push(roomId);
     sql += ` AND c.room_id = $${params.length}`;
-  } else {
-    sql += ` AND c.room_id IS NULL`;
   }
+  // roomMode === 'all' -> sin condición adicional, se ve todo
+
   if (before) {
     params.push(before);
     sql += ` AND c.created_at < $${params.length}`;
@@ -89,6 +94,8 @@ function shapeRow(row) {
     title: row.title || null,
     caption: row.caption || null,
     durationHours: row.duration_hours,
+    roomName: row.room_name || null,
+    roomSlug: row.room_slug || null,
     media,
     imageUrl: media[0] || null,
     isAlbum: media.length > 1,
@@ -110,8 +117,12 @@ router.get('/', optionalAuth, async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || PAGE_SIZE, 1), 60);
     const before = req.query.before && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
 
+    let roomMode = 'all';
     let roomId = null;
-    if (req.query.room) {
+    if (req.query.room === 'general') {
+      roomMode = 'general';
+    } else if (req.query.room) {
+      roomMode = 'room';
       await sweepInactiveRooms();
       const roomResult = await pool.query('SELECT id, expires_at FROM rooms WHERE slug = $1', [req.query.room]);
       if (roomResult.rowCount === 0) {
@@ -124,7 +135,7 @@ router.get('/', optionalAuth, async (req, res) => {
       roomId = room.id;
     }
 
-    const { sql, params } = buildListQuery({ roomId, before, limit: limit + 1, userId });
+    const { sql, params } = buildListQuery({ roomMode, roomId, before, limit: limit + 1, userId });
     const result = await pool.query(sql, params);
     const hasMore = result.rows.length > limit;
     const rows = result.rows.slice(0, limit);

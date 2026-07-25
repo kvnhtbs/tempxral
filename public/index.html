@@ -18,6 +18,29 @@
 
 <div class="txp-rooms-bar" id="txp-rooms-bar"></div>
 
+<div class="txp-overlay" id="txp-newroom-overlay">
+  <div class="txp-upload-modal">
+    <button class="txp-modal-close" id="txp-newroom-close">&times;</button>
+    <h3>Crear una sala</h3>
+    <p class="sub">Temporal, con el tiempo límite que elijas.</p>
+    <div class="txp-field">
+      <label for="txp-newroom-name">Nombre de la sala</label>
+      <input type="text" id="txp-newroom-name" placeholder="Ej. Fiesta del viernes" maxlength="60">
+    </div>
+    <div class="txp-field">
+      <label for="txp-newroom-duration">Duración</label>
+      <select id="txp-newroom-duration">
+        <option value="1">1 hora</option>
+        <option value="6">6 horas</option>
+        <option value="24" selected>24 horas</option>
+        <option value="72">72 horas</option>
+      </select>
+    </div>
+    <div class="txp-modal-err" id="txp-newroom-err"></div>
+    <button class="txp-btn primary" id="txp-newroom-submit" style="width:100%;">Crear sala</button>
+  </div>
+</div>
+
 <div class="txp-banner" id="txp-banner" style="display:none;">
   <span>Estás navegando como visitante. Puedes ver todo, pero necesitas una cuenta para subir, votar, ampliar tiempo o reportar.</span>
   <button class="txp-btn primary" id="txp-banner-register">Registrarme</button>
