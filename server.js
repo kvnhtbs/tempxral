@@ -10,6 +10,7 @@ const itemsRoutes = require('./src/routes/items');
 const accountRoutes = require('./src/routes/account');
 const roomsRoutes = require('./src/routes/rooms');
 const adminRoutes = require('./src/routes/admin');
+const presenceRoutes = require('./src/routes/presence');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,7 @@ app.use('/api/items', itemsRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/presence', presenceRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

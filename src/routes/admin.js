@@ -68,6 +68,29 @@ router.delete('/items/:id', requireAdmin, async (req, res) => {
   }
 });
 
+router.get('/comments', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.id, c.body, c.author_username, c.created_at, c.item_id,
+             ci.title AS item_title,
+             (SELECT file_path FROM content_media m WHERE m.item_id = ci.id ORDER BY position LIMIT 1) AS cover
+      FROM comments c
+      JOIN content_items ci ON ci.id = c.item_id
+      ORDER BY c.created_at DESC
+      LIMIT 200
+    `);
+    res.json({
+      comments: result.rows.map(r => ({
+        id: r.id, body: r.body, author: r.author_username, createdAt: r.created_at,
+        itemId: r.item_id, itemTitle: r.item_title, cover: r.cover ? '/uploads/' + r.cover : null
+      }))
+    });
+  } catch (err) {
+    console.error('Error en GET /admin/comments:', err);
+    res.status(500).json({ error: 'server_error', message: 'No se pudo cargar el listado.' });
+  }
+});
+
 router.delete('/comments/:id', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM comments WHERE id = $1', [req.params.id]);

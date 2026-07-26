@@ -93,5 +93,15 @@ ALTER TABLE content_items ADD COLUMN IF NOT EXISTS room_id UUID REFERENCES rooms
 CREATE INDEX IF NOT EXISTS idx_content_items_room ON content_items (room_id);
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
+-- Añadido más adelante: contadores de vistas/descargas, y likes en comentarios.
+ALTER TABLE content_items ADD COLUMN IF NOT EXISTS view_count INT NOT NULL DEFAULT 0;
+ALTER TABLE content_items ADD COLUMN IF NOT EXISTS download_count INT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS comment_likes (
+  comment_id UUID NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (comment_id, user_id)
+);
+
 -- Añadido más adelante: panel de administración.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;

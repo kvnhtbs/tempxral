@@ -37,6 +37,8 @@ const commentLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
 
 const BASE_COLUMNS = `
   c.id, c.author_username, c.title, c.caption, c.duration_hours, c.created_at, c.expires_at,
+  c.view_count, c.download_count,
+  (SELECT COUNT(*)::int FROM extensions e WHERE e.item_id = c.id) AS extend_count,
   (SELECT r.name FROM rooms r WHERE r.id = c.room_id) AS room_name,
   (SELECT r.slug FROM rooms r WHERE r.id = c.room_id) AS room_slug,
   COALESCE((SELECT COUNT(*) FROM votes v WHERE v.item_id = c.id AND v.value = 1), 0)::int AS likes,
@@ -105,6 +107,9 @@ function shapeRow(row) {
     dislikes: row.dislikes,
     net: row.likes - row.dislikes,
     commentCount: row.comment_count || 0,
+    viewCount: row.view_count || 0,
+    downloadCount: row.download_count || 0,
+    extendCount: row.extend_count || 0,
     myVote: row.my_vote || null,
     extendedToday: row.extended_today,
     reportedByMe: row.reported_by_me
@@ -163,14 +168,22 @@ router.get('/:id', optionalAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'not_found', message: 'Esta publicación ya no está disponible.' });
     }
+    pool.query('UPDATE content_items SET view_count = view_count + 1 WHERE id = $1', [id]).catch(() => {});
+
     const [withMedia] = await attachMedia(result.rows);
     const comments = await pool.query(
-      'SELECT id, author_username, body, created_at FROM comments WHERE item_id = $1 ORDER BY created_at ASC LIMIT 300',
-      [id]
+      `SELECT c.id, c.author_username, c.body, c.created_at,
+              COALESCE((SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id), 0)::int AS like_count,
+              EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) AS liked_by_me
+       FROM comments c WHERE c.item_id = $1 ORDER BY c.created_at ASC LIMIT 300`,
+      [id, userId]
     );
     res.json({
       item: shapeRow(withMedia),
-      comments: comments.rows.map(c => ({ id: c.id, author: c.author_username, body: c.body, createdAt: c.created_at }))
+      comments: comments.rows.map(c => ({
+        id: c.id, author: c.author_username, body: c.body, createdAt: c.created_at,
+        likeCount: c.like_count, likedByMe: c.liked_by_me
+      }))
     });
   } catch (err) {
     console.error('Error en GET /items/:id:', err);
@@ -196,10 +209,44 @@ router.post('/:id/comments', requireAuth, commentLimiter, async (req, res) => {
       [id, req.user.id, req.user.username, body]
     );
     const c = result.rows[0];
-    res.status(201).json({ id: c.id, author: c.author_username, body: c.body, createdAt: c.created_at });
+    res.status(201).json({ id: c.id, author: c.author_username, body: c.body, createdAt: c.created_at, likeCount: 0, likedByMe: false });
   } catch (err) {
     console.error('Error al comentar:', err);
     res.status(500).json({ error: 'server_error', message: 'No se pudo publicar el comentario.' });
+  }
+});
+
+router.post('/:id/comments/:commentId/like', requireAuth, async (req, res) => {
+  const { commentId } = req.params;
+  try {
+    const existing = await pool.query('SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, req.user.id]);
+    let likedByMe;
+    if (existing.rowCount > 0) {
+      await pool.query('DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, req.user.id]);
+      likedByMe = false;
+    } else {
+      await pool.query('INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [commentId, req.user.id]);
+      likedByMe = true;
+    }
+    const count = await pool.query('SELECT COUNT(*)::int AS n FROM comment_likes WHERE comment_id = $1', [commentId]);
+    res.json({ likeCount: count.rows[0].n, likedByMe });
+  } catch (err) {
+    console.error('Error al dar like al comentario:', err);
+    res.status(500).json({ error: 'server_error', message: 'No se pudo registrar el like.' });
+  }
+});
+
+router.post('/:id/download', optionalAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'UPDATE content_items SET download_count = download_count + 1 WHERE id = $1 AND hidden_reason IS NULL RETURNING download_count',
+      [req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'not_found', message: 'Esta publicación ya no está disponible.' });
+    res.json({ downloadCount: result.rows[0].download_count });
+  } catch (err) {
+    console.error('Error al contar descarga:', err);
+    res.status(500).json({ error: 'server_error', message: 'No se pudo registrar la descarga.' });
   }
 });
 

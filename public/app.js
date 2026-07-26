@@ -286,9 +286,10 @@
     const commentsHtml = comments.length === 0
       ? '<p class="txp-no-comments">Sé el primero en comentar.</p>'
       : comments.map(c => `
-          <div class="txp-comment">
+          <div class="txp-comment" data-comment-id="${c.id}">
             <span class="txp-comment-author">@${escapeHtml(c.author)}</span>
             <span class="txp-comment-body">${escapeHtml(c.body)}</span>
+            <button class="txp-comment-like ${c.likedByMe ? 'active' : ''}" data-comment-like="${c.id}">♥ ${c.likeCount || 0}</button>
           </div>`).join('');
 
     lightboxBody.innerHTML = `
@@ -307,6 +308,7 @@
         ${item.title ? `<h3 class="txp-lightbox-title">${escapeHtml(item.title)}</h3>` : ''}
         ${item.caption ? `<p class="txp-lightbox-caption">${escapeHtml(item.caption)}</p>` : ''}
         <div class="txp-meta"><span>@${escapeHtml(item.author)}</span><span>${relativeSince(item.createdAt)}</span></div>
+        <div class="txp-stats-row">👁 ${item.viewCount || 0} vistas · ⬇ ${item.downloadCount || 0} descargas · ⏳ ${item.extendCount || 0} ampliaciones</div>
         <div class="txp-actions">
           <div class="txp-votes">
             <button class="txp-stamp like ${item.myVote === 1 ? 'active' : ''}" data-lb-vote="1">▲ ${item.likes}</button>
@@ -324,10 +326,27 @@
       </div>
     `;
 
+    lightboxBody.querySelectorAll('[data-comment-like]').forEach(btn => btn.addEventListener('click', () => {
+      requireAuth(async () => {
+        const commentId = btn.getAttribute('data-comment-like');
+        try {
+          const result = await api('/api/items/' + item.id + '/comments/' + commentId + '/like', { method: 'POST' });
+          const c = comments.find(c => c.id === commentId);
+          if (c) { c.likeCount = result.likeCount; c.likedByMe = result.likedByMe; }
+          renderLightbox(item, comments);
+        } catch (e) { toast(e.message || 'No se pudo dar like.'); }
+      });
+    }));
+
     const prevBtn = lightboxBody.querySelector('[data-carousel="prev"]');
     const nextBtn = lightboxBody.querySelector('[data-carousel="next"]');
     if (prevBtn) prevBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex - 1 + media.length) % media.length; renderLightbox(item, comments); });
     if (nextBtn) nextBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex + 1) % media.length; renderLightbox(item, comments); });
+
+    const downloadBtn = lightboxBody.querySelector('.txp-download-btn');
+    if (downloadBtn) downloadBtn.addEventListener('click', () => {
+      api('/api/items/' + item.id + '/download', { method: 'POST' }).catch(() => {});
+    });
 
     lightboxBody.querySelectorAll('[data-lb-vote]').forEach(btn => btn.addEventListener('click', () => {
       requireAuth(async () => {
@@ -416,7 +435,6 @@
       <button class="txp-btn" id="txp-acc-pw-submit">Actualizar contraseña</button>
 
       <h4 class="txp-comments-title" style="color:var(--rust);">Eliminar mi cuenta</h4>
-      <p class="sub">Tus publicaciones no se borran ni se eliminan del servidor: dejan de estar asociadas a tu usuario, pero se conservan como estaban, según la filosofía de Tempxral.</p>
       <div class="txp-field"><input type="password" id="txp-acc-del-pw" placeholder="Confirma tu contraseña"></div>
       <div class="txp-modal-err" id="txp-acc-del-err"></div>
       <button class="txp-btn" style="border-color:var(--rust); color:var(--rust);" id="txp-acc-del-submit">Eliminar cuenta definitivamente</button>
@@ -527,7 +545,7 @@
       const timeLabel = parts.days > 0 ? parts.days + 'd ' + parts.hours + 'h restantes' : parts.hours + 'h ' + parts.mins + 'm restantes';
 
       card.innerHTML = `
-        <div class="txp-imgwrap">
+        <div class="txp-imgwrap${item.isAlbum ? ' album' : ''}">
           <img src="${item.imageUrl}" alt="${escapeHtml(item.title || 'Contenido publicado por ' + item.author)}" loading="lazy" data-open-lightbox="1">
           <button class="txp-report-btn ${item.reportedByMe ? 'reported' : ''}" data-report="1" title="${item.reportedByMe ? 'Ya reportado' : 'Reportar contenido inapropiado'}">&#9873;</button>
           ${item.isAlbum ? `<span class="txp-album-badge">📷 1/${item.media.length}</span>` : ''}
@@ -553,6 +571,11 @@
       `;
 
       card.querySelectorAll('[data-open-lightbox]').forEach(el => el.addEventListener('click', () => openLightbox(item.id)));
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return; // no interceptar clics en botones (votar, ampliar, reportar)
+        openLightbox(item.id);
+      });
 
       card.querySelectorAll('[data-vote]').forEach(btn => btn.addEventListener('click', () => vote(item.id, parseInt(btn.getAttribute('data-vote'), 10))));
       const extBtn = card.querySelector('[data-extend]');
@@ -720,6 +743,38 @@
     }
   });
 
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      overlay.classList.remove('open');
+      lightboxOverlay.classList.remove('open');
+      accountOverlay.classList.remove('open');
+      uploadOverlay.classList.remove('open');
+      $('#txp-newroom-overlay').classList.remove('open');
+      return;
+    }
+    if (!lightboxOverlay.classList.contains('open')) return;
+    if (e.key === 'ArrowLeft') { const btn = lightboxBody.querySelector('[data-carousel="prev"]'); if (btn) btn.click(); }
+    if (e.key === 'ArrowRight') { const btn = lightboxBody.querySelector('[data-carousel="next"]'); if (btn) btn.click(); }
+  });
+
+  // ---------- Presencia: cuántas personas hay ahora mismo en la web ----------
+  function getVisitorId() {
+    let id = sessionStorage.getItem('txp_visitor_id');
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : 'v-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+      sessionStorage.setItem('txp_visitor_id', id);
+    }
+    return id;
+  }
+
+  async function pingPresence() {
+    try {
+      const data = await api('/api/presence/ping', { method: 'POST', body: JSON.stringify({ visitorId: getVisitorId() }) });
+      const el = $('#txp-online-count');
+      if (el) el.textContent = data.online === 1 ? '1 persona conectada ahora' : data.online + ' personas conectadas ahora';
+    } catch (e) { /* si falla, simplemente no se actualiza esta vez */ }
+  }
+
   async function init() {
     try {
       const me = await api('/api/auth/me');
@@ -727,8 +782,10 @@
     } catch (e) { /* seguimos como visitante */ }
     await loadRooms();
     await refreshItems();
+    pingPresence();
     setInterval(refreshItems, 20000);
     setInterval(loadRooms, 30000);
+    setInterval(pingPresence, 20000);
   }
 
   init();

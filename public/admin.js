@@ -59,8 +59,45 @@
     if (currentTab === 'reported') return loadItems('reported');
     if (currentTab === 'all') return loadItems('all');
     if (currentTab === 'hidden') return loadItems('hidden');
+    if (currentTab === 'comments') return loadComments();
     if (currentTab === 'rooms') return loadRooms();
     if (currentTab === 'users') return loadUsers();
+  }
+
+  async function loadComments() {
+    try {
+      const data = await api('/api/admin/comments');
+      if (data.comments.length === 0) {
+        content.innerHTML = '<p style="color:var(--muted-light); font-family:var(--font-mono); font-size:13px;">No hay comentarios todavía.</p>';
+        return;
+      }
+      content.innerHTML = data.comments.map(c => `
+        <div class="txp-admin-row">
+          ${c.cover ? `<img src="${c.cover}" alt="">` : ''}
+          <div class="info">
+            <div class="title">@${escapeHtml(c.author)} en "${c.itemTitle ? escapeHtml(c.itemTitle) : 'sin título'}"</div>
+            <div>${escapeHtml(c.body)}</div>
+            <div class="meta">${relTime(c.createdAt)}</div>
+          </div>
+          <div class="txp-admin-actions">
+            <button class="txp-admin-danger" data-delete-comment="${c.id}">Eliminar</button>
+          </div>
+        </div>
+      `).join('');
+
+      content.querySelectorAll('[data-delete-comment]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('¿Eliminar este comentario?')) return;
+          try {
+            await api('/api/admin/comments/' + btn.getAttribute('data-delete-comment'), { method: 'DELETE' });
+            toast('Comentario eliminado.');
+            loadTab();
+          } catch (e) { toast(e.message || 'No se pudo eliminar.'); }
+        });
+      });
+    } catch (e) {
+      content.innerHTML = '<p style="color:var(--rust);">' + escapeHtml(e.message || 'Error al cargar.') + '</p>';
+    }
   }
 
   async function loadItems(filter) {
