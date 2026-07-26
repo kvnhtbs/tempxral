@@ -1,27 +1,20 @@
-# Blueprint de Render: define TODO lo que hace falta (servidor web, base de datos,
-# variables de entorno) en un solo archivo.
-# Con esto, desplegar es: conectar el repo en Render → "Apply" → esperar.
-# No hace falta escribir variables de entorno a mano ni ejecutar comandos.
-#
-# Esta es la versión GRATUITA (sin coste): sin disco persistente, así que las
-# imágenes desaparecen cada vez que Render reinicie el servicio, y la base de
-# datos gratuita se borra sola a los 30 días. Bien para probarlo; cuando quieras
-# hacerlo permanente, dímelo y volvemos a la versión de pago (~13-14€/mes) sin
-# perder lo que ya tengas.
+# Blueprint de Render — versión DE PAGO, reflejando lo que ya tienes activo
+# manualmente en el panel (Starter + disco de 1GB + Postgres de pago). Si
+# alguna vez se vuelve a sincronizar este archivo, esto evita que Render
+# revierta tu plan a la versión gratuita sin avisar.
 
 services:
   - type: web
     name: tempxral
     runtime: node
-    rootDir: tempxral-app          # el código vive en esta subcarpeta del repositorio
-    plan: starter                  # Cambiado a starter para permitir el uso de discos persistentes
+    plan: starter
     buildCommand: npm install
-    startCommand: npm run start:prod   # aplica el esquema de base de datos y luego arranca, automático en cada despliegue
+    startCommand: npm run start:prod
     healthCheckPath: /api/health
-    disk:                          # Configuración del disco persistente
-      name: tempxral-data
-      mountPath: /var/data         # Ruta dentro de la app para guardar archivos persistentes
-      sizeGB: 1                    # Tamaño del disco en GB
+    disk:
+      name: tempxral-uploads
+      mountPath: /data/uploads
+      sizeGB: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -30,13 +23,15 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: JWT_SECRET
-        generateValue: true        # Render genera un valor aleatorio seguro solo, no hay que escribir nada
+        generateValue: true
       - key: NODE_ENV
         value: production
+      - key: UPLOADS_DIR
+        value: /data/uploads
       - key: MODERATION_ENABLED
-        value: "false"             # cámbialo a "true" cuando tengas cuenta en Sightengine (ver DEPLOY.md)
+        value: "false"
       - key: SIGHTENGINE_API_USER
-        sync: false                # rellénalo tú directamente en el panel de Render, no se guarda en GitHub
+        sync: false
       - key: SIGHTENGINE_API_SECRET
         sync: false
 
@@ -44,4 +39,4 @@ databases:
   - name: tempxral-db
     databaseName: tempxral
     user: tempxral
-    plan: starter                  # Cambiado a starter para que no expire a los 90 días como el plan gratuito
+    plan: basic-256mb
