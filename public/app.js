@@ -261,8 +261,12 @@
 
   // ---------- Lightbox (imagen ampliada + comentarios) ----------
 
-  $('#txp-lightbox-close').addEventListener('click', () => lightboxOverlay.classList.remove('open'));
-  lightboxOverlay.addEventListener('click', (e) => { if (e.target === lightboxOverlay) lightboxOverlay.classList.remove('open'); });
+  function closeLightbox() {
+    lightboxOverlay.classList.remove('open');
+    history.pushState({}, '', window.location.pathname);
+  }
+  $('#txp-lightbox-close').addEventListener('click', closeLightbox);
+  lightboxOverlay.addEventListener('click', (e) => { if (e.target === lightboxOverlay) closeLightbox(); });
 
   let lightboxIndex = 0;
 
@@ -270,6 +274,7 @@
     lightboxIndex = 0;
     lightboxOverlay.classList.add('open');
     lightboxBody.innerHTML = '<div class="txp-loading">Cargando…</div>';
+    history.pushState({}, '', '?item=' + itemId);
     try {
       const data = await api('/api/items/' + itemId);
       renderLightbox(data.item, data.comments);
@@ -294,6 +299,7 @@
 
     lightboxBody.innerHTML = `
       <div class="txp-lightbox-toprow">
+        <button class="txp-download-btn" id="txp-share-btn" type="button">🔗 Compartir</button>
         <a class="txp-download-btn" href="${currentSrc}" download="tempxral-${item.id}-${lightboxIndex + 1}.jpg">⬇ Descargar</a>
       </div>
       <div class="txp-carousel">
@@ -343,9 +349,20 @@
     if (prevBtn) prevBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex - 1 + media.length) % media.length; renderLightbox(item, comments); });
     if (nextBtn) nextBtn.addEventListener('click', () => { lightboxIndex = (lightboxIndex + 1) % media.length; renderLightbox(item, comments); });
 
-    const downloadBtn = lightboxBody.querySelector('.txp-download-btn');
+    const downloadBtn = lightboxBody.querySelector('.txp-download-btn[href]');
     if (downloadBtn) downloadBtn.addEventListener('click', () => {
       api('/api/items/' + item.id + '/download', { method: 'POST' }).catch(() => {});
+    });
+
+    const shareBtn = $('#txp-share-btn');
+    if (shareBtn) shareBtn.addEventListener('click', async () => {
+      const url = window.location.origin + '/?item=' + item.id;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('Enlace copiado.');
+      } catch (e) {
+        toast(url); // si el navegador bloquea el portapapeles, al menos se lo mostramos
+      }
     });
 
     lightboxBody.querySelectorAll('[data-lb-vote]').forEach(btn => btn.addEventListener('click', () => {
@@ -570,10 +587,10 @@
         <button class="txp-comments-btn" data-open-lightbox="1">💬 ${item.commentCount || 0} comentario(s)</button>
       `;
 
-      card.querySelectorAll('[data-open-lightbox]').forEach(el => el.addEventListener('click', () => openLightbox(item.id)));
+      card.querySelectorAll('[data-open-lightbox]').forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(item.id); }));
       card.style.cursor = 'pointer';
       card.addEventListener('click', (e) => {
-        if (e.target.closest('button')) return; // no interceptar clics en botones (votar, ampliar, reportar)
+        if (e.target.closest('button') || e.target.closest('[data-open-lightbox]')) return; // ya lo maneja su propio listener
         openLightbox(item.id);
       });
 
@@ -732,7 +749,7 @@
     // "Ir a inicio": cierra cualquier ventana abierta, vuelve a la vista
     // "Todo" y sube arriba del todo.
     overlay.classList.remove('open');
-    lightboxOverlay.classList.remove('open');
+    closeLightbox();
     accountOverlay.classList.remove('open');
     uploadOverlay.classList.remove('open');
     $('#txp-newroom-overlay').classList.remove('open');
@@ -746,7 +763,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       overlay.classList.remove('open');
-      lightboxOverlay.classList.remove('open');
+      closeLightbox();
       accountOverlay.classList.remove('open');
       uploadOverlay.classList.remove('open');
       $('#txp-newroom-overlay').classList.remove('open');
@@ -786,6 +803,9 @@
     setInterval(refreshItems, 20000);
     setInterval(loadRooms, 30000);
     setInterval(pingPresence, 20000);
+
+    const sharedItemId = new URLSearchParams(window.location.search).get('item');
+    if (sharedItemId) openLightbox(sharedItemId);
   }
 
   init();
