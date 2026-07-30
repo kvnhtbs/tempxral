@@ -3,54 +3,76 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const fs = require('fs');
+const http = require('http');
+const rateLimit = require('express-rate-limit');
 
+const { initDatabase, dbMiddleware } = require('./src/db');
+const { initWebSocket } = require('./src/websocket');
 const authRoutes = require('./src/routes/auth');
 const itemsRoutes = require('./src/routes/items');
-const accountRoutes = require('./src/routes/account');
-const roomsRoutes = require('./src/routes/rooms');
-const adminRoutes = require('./src/routes/admin');
-const presenceRoutes = require('./src/routes/presence');
+const statsRoutes = require('./src/routes/stats');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+const server = http.createServer(app);
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Inicializar WebSocket
+const io = initWebSocket(server);
 
-app.set('trust proxy', 1); // necesario detrás de Render/Railway/Fly para cookies "secure" y rate limit por IP real
+// Configuración de rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // 100 peticiones por ventana
+  message: 'Demasiadas peticiones desde esta IP',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
+// Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN || true,
+  origin: process.env.CORS_ORIGIN || '*',
   credentials: true
 }));
-app.use(express.json());
 app.use(cookieParser());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '365d', immutable: true }));
+// Conectar a la base de datos
+const db = initDatabase();
+app.use(dbMiddleware);
 
-app.use('/api/auth', authRoutes);
-app.use('/api/items', itemsRoutes);
-app.use('/api/account', accountRoutes);
-app.use('/api/rooms', roomsRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/presence', presenceRoutes);
+// Rutas públicas
+app.use(express.static('public'));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Rutas API con rate limiting
+app.use('/api/auth', limiter, authRoutes);
+app.use('/api/items', limiter, itemsRoutes);
+app.use('/api/stats', limiter, statsRoutes);
 
-// Sirve el frontend estático (misma app, mismo dominio: sin líos de CORS)
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Ruta para health check
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    websocket: io ? 'connected' : 'disconnected'
+  });
 });
 
-// Manejador de errores por defecto
+// Manejo de errores
 app.use((err, req, res, next) => {
-  console.error('Error no controlado:', err);
-  res.status(500).json({ error: 'server_error', message: 'Algo ha fallado en el servidor.' });
+  console.error('Error:', err.stack);
+  res.status(err.status || 500).json({
+    error: err.message || 'Error interno del servidor'
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`Tempxral escuchando en el puerto ${PORT}`);
+// Puerto
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket habilitado en ws://localhost:${PORT}`);
+  console.log(`📊 Dashboard disponible en http://localhost:${PORT}/dashboard.html`);
 });
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 Recibida señal SIGTERM
