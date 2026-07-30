@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 
 const { initDatabase, dbMiddleware } = require('./src/db');
 const { initWebSocket } = require('./src/websocket');
-const authRoutes = require('./src/routes/auth');
+const { router: authRoutes, authenticate } = require('./src/routes/auth');
 const itemsRoutes = require('./src/routes/items');
 const statsRoutes = require('./src/routes/stats');
 
@@ -40,7 +40,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const db = initDatabase();
 app.use(dbMiddleware);
 
-// Rutas públicas
+// Rutas públicas (frontend estático)
 app.use(express.static('public'));
 
 // Rutas API con rate limiting
@@ -48,16 +48,17 @@ app.use('/api/auth', limiter, authRoutes);
 app.use('/api/items', limiter, itemsRoutes);
 app.use('/api/stats', limiter, statsRoutes);
 
-// Ruta para health check
+// ========== HEALTH CHECK ==========
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    websocket: io ? 'connected' : 'disconnected'
+    websocket: io ? 'connected' : 'disconnected',
+    uptime: process.uptime()
   });
 });
 
-// Manejo de errores
+// ========== MANEJO DE ERRORES ==========
 app.use((err, req, res, next) => {
   console.error('Error:', err.stack);
   res.status(err.status || 500).json({
@@ -65,15 +66,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Puerto
+// ========== PUERTO ==========
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   console.log(`🔌 WebSocket habilitado en ws://localhost:${PORT}`);
   console.log(`📊 Dashboard disponible en http://localhost:${PORT}/dashboard.html`);
+  console.log(`🏥 Health check en http://localhost:${PORT}/health`);
 });
 
-// Graceful shutdown - CORREGIDO
+// ========== GRACEFUL SHUTDOWN ==========
 process.on('SIGTERM', () => {
   console.log('🛑 Recibida señal SIGTERM. Cerrando servidor...');
   server.close(() => {
