@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../auth');
+const { authenticate } = require('./auth');
 
-// Obtener estadísticas del usuario
+// ========== ESTADÍSTICAS DEL USUARIO ==========
 router.get('/user/stats', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -74,7 +74,6 @@ router.get('/user/stats', authenticate, async (req, res) => {
       posts_last_7_days: 0
     };
 
-    // Obtener posts populares del usuario
     const popularPosts = await req.db.query(`
       SELECT 
         id,
@@ -91,7 +90,6 @@ router.get('/user/stats', authenticate, async (req, res) => {
       LIMIT 5
     `, [userId]);
 
-    // Obtener actividad reciente
     const recentActivity = await req.db.query(`
       SELECT 
         action,
@@ -123,73 +121,29 @@ router.get('/user/stats', authenticate, async (req, res) => {
   }
 });
 
-// Obtener estadísticas de una publicación específica
-router.get('/post/:postId/stats', authenticate, async (req, res) => {
+// ========== NOTIFICACIONES ==========
+router.get('/notifications', authenticate, async (req, res) => {
   try {
-    const { postId } = req.params;
     const userId = req.user.id;
-
     const { rows } = await req.db.query(`
-      SELECT 
-        i.*,
-        u.username as author,
-        COUNT(DISTINCT l.id) as likes_count,
-        COUNT(DISTINCT c.id) as comments_count,
-        COUNT(DISTINCT v.id) as views_count,
-        COUNT(DISTINCT r.id) as reports_count
-      FROM items i
-      JOIN users u ON i.user_id = u.id
-      LEFT JOIN likes l ON i.id = l.item_id
-      LEFT JOIN comments c ON i.id = c.item_id
-      LEFT JOIN views v ON i.id = v.item_id
-      LEFT JOIN reports r ON i.id = r.item_id
-      WHERE i.id = $1 AND i.user_id = $2 AND i.deleted = false
-      GROUP BY i.id, u.username
-    `, [postId, userId]);
+      SELECT id, message, type, action, post_id, actor_username, read, created_at
+      FROM notifications
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT 50
+    `, [userId]);
 
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Publicación no encontrada' });
-    }
+    // Marcar como leídas
+    await req.db.query(`
+      UPDATE notifications 
+      SET read = true, updated_at = NOW()
+      WHERE user_id = $1 AND read = false
+    `, [userId]);
 
-    res.json(rows[0]);
+    res.json({ notifications: rows });
   } catch (error) {
-    console.error('Error fetching post stats:', error);
-    res.status(500).json({ error: 'Error al obtener estadísticas de la publicación' });
-  }
-});
-
-// Obtener tendencias globales
-router.get('/trending', async (req, res) => {
-  try {
-    const { rows } = await req.db.query(`
-      SELECT 
-        i.id,
-        i.title,
-        i.description,
-        i.image_url,
-        i.likes,
-        i.views,
-        i.created_at,
-        u.username,
-        (i.likes * 0.6 + COALESCE(c.comment_count, 0) * 0.4) as trending_score
-      FROM items i
-      JOIN users u ON i.user_id = u.id
-      LEFT JOIN (
-        SELECT item_id, COUNT(*) as comment_count
-        FROM comments
-        GROUP BY item_id
-      ) c ON i.id = c.item_id
-      WHERE i.expires_at > NOW() 
-        AND i.deleted = false
-        AND i.likes > 0
-      ORDER BY trending_score DESC
-      LIMIT 10
-    `);
-
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching trending:', error);
-    res.status(500).json({ error: 'Error al obtener tendencias' });
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Error al obtener notificaciones' });
   }
 });
 
