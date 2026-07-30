@@ -20,8 +20,8 @@ const io = initWebSocket(server);
 
 // Configuración de rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // 100 peticiones por ventana
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: 'Demasiadas peticiones desde esta IP',
   standardHeaders: true,
   legacyHeaders: false,
