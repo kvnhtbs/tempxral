@@ -73,7 +73,7 @@ server.listen(PORT, () => {
   console.log(`📊 Dashboard disponible en http://localhost:${PORT}/dashboard.html`);
 });
 
-// Graceful shutdown
+// Graceful shutdown - CORREGIDO
 process.on('SIGTERM', () => {
   console.log('🛑 Recibida señal SIGTERM. Cerrando servidor...');
   server.close(() => {
