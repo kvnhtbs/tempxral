@@ -231,4 +231,31 @@ function renderPopularPosts(posts) {
 
     container.innerHTML = posts.map(post => `
         <div style="display:flex;justify-content:space-between;padding:0.75rem;background:#f8f9fa;border-radius:8px;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.5rem;">
-            <span
+            <span><strong>${post.title || 'Sin título'}</strong></span>
+            <span>
+                ❤️ ${post.likes || 0} | 👁️ ${post.views || 0}
+                <span style="color:#999;font-size:0.8rem;margin-left:0.5rem;">${new Date(post.created_at).toLocaleDateString()}</span>
+            </span>
+        </div>
+    `).join('');
+}
+
+// ========== LOGOUT ==========
+document.getElementById('logout-btn')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        if (socket) socket.disconnect();
+        document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        window.location.href = '/';
+    } catch (error) {
+        console.error('Error cerrando sesión:', error);
+    }
+});
+
+// ========== INICIALIZACIÓN ==========
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!checkAuth()) return;
+    await loadNotifications();
+    await loadDashboardStats();
+});
