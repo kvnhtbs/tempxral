@@ -75,4 +75,9 @@ server.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('🛑 Recibida señal SIGTERM
+  console.log('🛑 Recibida señal SIGTERM. Cerrando servidor...');
+  server.close(() => {
+    console.log('✅ Servidor cerrado');
+    process.exit(0);
+  });
+});
