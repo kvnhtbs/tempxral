@@ -1,14 +1,14 @@
 {
   "name": "tempxral",
-  "version": "2.0.0",
-  "description": "Contenido que se desvanece con el tiempo - versión mejorada",
+  "version": "1.0.0",
+  "description": "Tempxral - contenido que se desvanece con el tiempo, nunca se borra",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "start:prod": "NODE_ENV=production node server.js",
-    "dev": "nodemon server.js",
-    "migrate": "node scripts/migrate.js",
-    "upgrade": "node scripts/upgrade.js"
+    "start:prod": "node scripts/migrate.js && node server.js",
+    "dev": "node --watch server.js",
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -16,17 +16,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.2.0",
+    "express-rate-limit": "^7.4.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0",
     "pg": "^8.12.0",
-    "sharp": "^0.33.4",
-    "socket.io": "^4.7.2",
-    "socket.io-client": "^4.7.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": "20.18.0"
+    "sharp": "^0.33.5"
   }
 }

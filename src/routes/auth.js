@@ -1,133 +1,78 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const { pool } = require('../db');
+const { setAuthCookie, clearAuthCookie, optionalAuth } = require('../auth');
+
 const router = express.Router();
 
-// Registro
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'too_many_attempts', message: 'Demasiados intentos. Prueba de nuevo en unos minutos.' }
+});
+
 router.post('/register', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!USERNAME_RE.test(username || '')) {
+    return res.status(400).json({ error: 'invalid_username', message: 'Usuario: 3-20 caracteres (letras, números, _).' });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'invalid_password', message: 'La contraseña debe tener al menos 6 caracteres.' });
+  }
   try {
-    const { username, password } = req.body;
-    
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
+    const existing = await pool.query('SELECT id FROM users WHERE lower(username) = lower($1)', [username]);
+    if (existing.rowCount > 0) {
+      return res.status(409).json({ error: 'username_taken', message: 'Ese usuario ya existe.' });
     }
-
-    // Verificar si el usuario ya existe
-    const existingUser = await req.db.query(
-      'SELECT id FROM users WHERE username = $1',
-      [username]
+    const hash = await bcrypt.hash(password, 12);
+    const result = await pool.query(
+      'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username',
+      [username, hash]
     );
-
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'El usuario ya existe' });
-    }
-
-    // Hash de la contraseña
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Crear usuario
-    const result = await req.db.query(
-      'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
-      [username, hashedPassword]
-    );
-
     const user = result.rows[0];
-    
-    // Generar token
-    const token = jwt.sign(
-      { id: user.id, username: user.username },
-      process.env.JWT_SECRET || 'secret_key',
-      { expiresIn: '7d' }
-    );
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    res.status(201).json({ 
-      message: 'Usuario registrado exitosamente',
-      user: { id: user.id, username: user.username }
-    });
-  } catch (error) {
-    console.error('Error en registro:', error);
-    res.status(500).json({ error: 'Error al registrar usuario' });
+    setAuthCookie(res, user);
+    res.json({ username: user.username });
+  } catch (err) {
+    console.error('Error en /register:', err);
+    res.status(500).json({ error: 'server_error', message: 'No se pudo crear la cuenta.' });
   }
 });
 
-// Login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Usuario y contraseña son obligatorios.' });
+  }
   try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
-    }
-
-    // Buscar usuario
-    const result = await req.db.query(
-      'SELECT id, username, password FROM users WHERE username = $1',
-      [username]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
-    }
-
+    const result = await pool.query('SELECT id, username, password_hash FROM users WHERE lower(username) = lower($1)', [username]);
     const user = result.rows[0];
-
-    // Verificar contraseña
-    const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!user) {
+      return res.status(401).json({ error: 'invalid_credentials', message: 'Usuario o contraseña incorrectos.' });
     }
-
-    // Generar token
-    const token = jwt.sign(
-      { id: user.id, username: user.username },
-      process.env.JWT_SECRET || 'secret_key',
-      { expiresIn: '7d' }
-    );
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    res.json({ 
-      message: 'Login exitoso',
-      user: { id: user.id, username: user.username }
-    });
-  } catch (error) {
-    console.error('Error en login:', error);
-    res.status(500).json({ error: 'Error al iniciar sesión' });
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'invalid_credentials', message: 'Usuario o contraseña incorrectos.' });
+    }
+    setAuthCookie(res, user);
+    res.json({ username: user.username });
+  } catch (err) {
+    console.error('Error en /login:', err);
+    res.status(500).json({ error: 'server_error', message: 'No se pudo iniciar sesión.' });
   }
 });
 
-// Logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.json({ message: 'Logout exitoso' });
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
 
-// Middleware de autenticación
-const authenticate = async (req, res, next) => {
-  try {
-    const token = req.cookies.token;
-    if (!token) {
-      return res.status(401).json({ error: 'No autenticado' });
-    }
+router.get('/me', optionalAuth, (req, res) => {
+  res.json({ username: req.user ? req.user.username : null });
+});
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_key');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Token inválido o expirado' });
-  }
-};
-
-module.exports = { router, authenticate };
+module.exports = router;
