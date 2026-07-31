@@ -245,8 +245,7 @@ body{
   background: var(--paper); color: var(--ink); width:100%; max-width:520px; max-height:88vh;
   overflow-y:auto; border-radius:4px; padding:18px 18px 22px; position:relative;
 }
-.txp-lightbox-img{ width:100%; border-radius:2px; display:block; margin-bottom:12px; max-height:50vh; object-fit:contain; background:#000; }
-.txp-lightbox-title{ font-family: var(--font-display); font-size:19px; margin:0 0 6px; }
+.txp-lightbox-img{ width:100%; height:100%; border-radius:2px; display:block; object-fit:contain; background:#000; }.txp-lightbox-title{ font-family: var(--font-display); font-size:19px; margin:0 0 6px; }
 .txp-download-btn{
   display:inline-block; font-family: var(--font-mono); font-size:11px; font-weight:700;
   border:1.5px solid var(--ink); color: var(--ink); background:transparent; padding:6px 10px;
@@ -305,7 +304,7 @@ body{
 .txp-file-count{ font-family: var(--font-mono); font-size:11px; color: var(--muted); margin:6px 0 0; }
 
 /* Carrusel de álbum en el lightbox */
-.txp-carousel{ position:relative; }
+.txp-carousel{ position:relative; height:55vh; max-height:480px; min-height:260px; background:#000; border-radius:2px; overflow:hidden; margin-bottom:12px; }
 .txp-carousel-nav{
   position:absolute; top:50%; transform:translateY(-50%); background:rgba(27,23,18,0.55); color:#fff;
   border:none; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer;
